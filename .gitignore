@@ -1,0 +1,13 @@
+# build output
+bin/
+obj/
+dist/
+
+# IDE
+.vs/
+.idea/
+*.user
+
+# runtime files a relay host generates
+nors-bans.txt
+nors-host-bans.txt

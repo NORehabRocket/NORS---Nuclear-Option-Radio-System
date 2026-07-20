@@ -1,0 +1,236 @@
+using System;
+using System.Collections.Generic;
+using NORS.Common;
+using NORS.Plugin.Comms;
+using UnityEngine;
+
+namespace NORS.Plugin.UI
+{
+    /// <summary>IMGUI radio panel: tune radios, pick the transmit radio, see who's talking and connection state.</summary>
+    internal sealed class RadioPanel
+    {
+        public bool Visible;
+
+        // Pushed in by the hub each frame.
+        public bool SocketUp;
+        public bool Connected;
+        public bool InGame;
+        public bool Transmitting;
+        public string ServerName = "";
+        public string LastError = "";
+        public string Callsign = "";
+        public string FactionName = "";
+        public float MicLevel;
+        public List<string> Talkers;
+
+        // Diagnostics.
+        public int TxFrames;
+        public int RxFrames;
+        public int TalkerCount;
+        public string MicInfo = "";
+
+        // Moderation / roster.
+        public List<RosterEntry> Roster;
+        public List<string> Notices;
+        public uint MyClientId;
+        public int MyFactionId;
+        public bool AdminAuthed;
+        public bool LocalIsHost;
+        public string AdminPassword = "";
+
+        // P2P mode (voice direct over Steam; host moderates by Steam id, no relay).
+        public bool P2PMode;
+        public ulong MySteamId;
+        public Action<ulong> OnHostBan;
+        public Action<ulong> OnHostUnban;
+        public Func<ulong, bool> IsBanned;
+
+        public Action ToggleConnect;
+        public Action<uint> OnVoteKick;
+        public Action<string> OnAdminLogin;
+        public Action<uint> OnAdminKick;
+        public Action<uint> OnAdminBan;
+
+        private string _adminPwField;
+        private Vector2 _scroll;
+
+        private readonly RadioSet _radios;
+        private const int WindowId = 0x4E4F5253; // 'NORS'
+        private Rect _window = new Rect(40, 80, 380, 0);
+        private GUIStyle _hdr;
+
+        public RadioPanel(RadioSet radios) { _radios = radios; }
+
+        public void Render()
+        {
+            if (!Visible) return;
+            _window = GUILayout.Window(WindowId, _window, Draw, "NORS  ·  Radio");
+        }
+
+        private void Draw(int id)
+        {
+            if (_hdr == null) _hdr = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
+
+            // --- status ---
+            string status =
+                !SocketUp ? "<color=#bbbbbb>Disconnected</color>" :
+                !Connected ? "<color=#ffd24a>Connecting…</color>" :
+                $"<color=#7CFC7C>Connected: {ServerName}</color>";
+            var rich = new GUIStyle(GUI.skin.label) { richText = true, fontStyle = FontStyle.Bold };
+            GUILayout.Label(status, rich);
+            if (!string.IsNullOrEmpty(LastError))
+                GUILayout.Label($"<color=#ff8080>{LastError}</color>", rich);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"{Callsign}  ·  {FactionName}");
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button(SocketUp ? "Disconnect" : "Connect", GUILayout.Width(100)))
+                ToggleConnect?.Invoke();
+            GUILayout.EndHorizontal();
+
+            // --- mic level / PTT ---
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Transmitting ? "<color=#ff5050>● TX</color>" : "○ RX", rich, GUILayout.Width(46));
+            GUILayout.Label(Bar(MicLevel, 22));
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
+            GUILayout.Label("Radios", _hdr);
+
+            for (int i = 0; i < _radios.Radios.Count; i++)
+                DrawRadio(i, _radios.Radios[i]);
+
+            // --- talkers ---
+            GUILayout.Space(4);
+            GUILayout.Label("Receiving", _hdr);
+            if (Talkers == null || Talkers.Count == 0)
+                GUILayout.Label("—");
+            else
+                foreach (var t in Talkers) GUILayout.Label("▸ " + t);
+
+            // --- players / moderation ---
+            GUILayout.Space(4);
+            GUILayout.Label("Players", _hdr);
+            if (Roster == null || Roster.Count == 0)
+                GUILayout.Label("—");
+            else
+            {
+                _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(Mathf.Min(150f, 24f * Roster.Count + 8f)));
+                foreach (var p in Roster)
+                {
+                    bool me = P2PMode ? (p.SteamId != 0 && p.SteamId == MySteamId) : (p.ClientId == MyClientId);
+                    bool sameFaction = p.FactionId == MyFactionId;
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(me ? p.Name + " (you)" : (sameFaction ? p.Name : p.Name + " <color=#888888>[other]</color>"),
+                        new GUIStyle(GUI.skin.label) { richText = true });
+                    GUILayout.FlexibleSpace();
+                    if (!me)
+                    {
+                        if (P2PMode)
+                        {
+                            // P2P: the game host moderates by Steam id (mute/ban), no relay/vote.
+                            if (LocalIsHost && p.SteamId != 0)
+                            {
+                                bool banned = IsBanned != null && IsBanned(p.SteamId);
+                                if (!banned && GUILayout.Button("Ban", GUILayout.Width(50))) OnHostBan?.Invoke(p.SteamId);
+                                if (banned && GUILayout.Button("Unban", GUILayout.Width(58))) OnHostUnban?.Invoke(p.SteamId);
+                            }
+                        }
+                        else
+                        {
+                            // Relay: faction vote-kick + (admin/host) kick/ban by client id.
+                            if (sameFaction && GUILayout.Button("Vote", GUILayout.Width(50))) OnVoteKick?.Invoke(p.ClientId);
+                            if (AdminAuthed || LocalIsHost)
+                            {
+                                if (GUILayout.Button("Kick", GUILayout.Width(50))) OnAdminKick?.Invoke(p.ClientId);
+                                if (GUILayout.Button("Ban", GUILayout.Width(46))) OnAdminBan?.Invoke(p.ClientId);
+                            }
+                        }
+                    }
+                    GUILayout.EndHorizontal();
+                }
+                GUILayout.EndScrollView();
+            }
+
+            // --- admin / host moderation ---
+            GUILayout.BeginHorizontal();
+            if (P2PMode)
+            {
+                GUILayout.Label(LocalIsHost
+                    ? "<color=#7CFC7C>You host this game — Ban/Unban moderate your players</color>"
+                    : "<color=#999999>P2P voice — the game host moderates</color>", rich);
+            }
+            else if (AdminAuthed)
+            {
+                GUILayout.Label("<color=#7CFC7C>Master admin</color>", rich);
+            }
+            else if (LocalIsHost)
+            {
+                GUILayout.Label("<color=#7CFC7C>You host this server — Kick/Ban moderate your players</color>", rich);
+            }
+            else
+            {
+                if (_adminPwField == null) _adminPwField = AdminPassword ?? "";
+                GUILayout.Label("Admin", GUILayout.Width(46));
+                _adminPwField = GUILayout.PasswordField(_adminPwField, '*', GUILayout.Width(120));
+                if (GUILayout.Button("Login", GUILayout.Width(60))) OnAdminLogin?.Invoke(_adminPwField);
+            }
+            GUILayout.EndHorizontal();
+
+            // --- notices ---
+            if (Notices != null && Notices.Count > 0)
+            {
+                GUILayout.Space(2);
+                for (int i = Notices.Count - 1; i >= 0 && i >= Notices.Count - 4; i--)
+                    GUILayout.Label("<color=#cfcfcf>• " + Notices[i] + "</color>", rich);
+            }
+
+            // --- diagnostics ---
+            GUILayout.Space(4);
+            GUILayout.Label($"<color=#8fb8ff>mic {MicInfo}  ·  TX {TxFrames}  ·  RX {RxFrames}  ·  talkers {TalkerCount}</color>", rich);
+
+            GUILayout.Space(2);
+            GUILayout.Label($"<color=#999999>PTT: {NorsConfig.PttKey.Value}   Cycle TX: {NorsConfig.CycleTxRadioKey.Value}   " +
+                            $"Tune: {NorsConfig.TuneDownKey.Value}/{NorsConfig.TuneUpKey.Value}</color>", rich);
+
+            GUI.DragWindow(new Rect(0, 0, 10000, 20));
+        }
+
+        private void DrawRadio(int index, Radio r)
+        {
+            bool isTx = index == _radios.TxIndex;
+            GUILayout.BeginVertical(GUI.skin.box);
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Toggle(isTx, isTx ? "TX" : "  ", GUILayout.Width(34)) && !isTx)
+                _radios.TxIndex = index;
+            GUILayout.Label($"<b>{r.Label}</b>  {r.FreqMHz:000.000}", new GUIStyle(GUI.skin.label) { richText = true });
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("–", GUILayout.Width(26))) _radios.Tune(r, -1);
+            if (GUILayout.Button("+", GUILayout.Width(26))) _radios.Tune(r, +1);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(ModLabel(r.Mod), GUILayout.Width(64))) r.Mod = NextMod(r.Mod);
+            r.Rx = GUILayout.Toggle(r.Rx, "RX", GUILayout.Width(44));
+            r.Secure = GUILayout.Toggle(r.Secure, r.Secure ? "SECURE" : "CLEAR", GUILayout.Width(72));
+            GUILayout.Label("Vol", GUILayout.Width(26));
+            r.Volume = GUILayout.HorizontalSlider(r.Volume, 0f, 1f, GUILayout.Width(70));
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndVertical();
+        }
+
+        private static string ModLabel(Modulation m) =>
+            m == Modulation.AM ? "AM" : m == Modulation.FM ? "FM" : "OFF";
+
+        private static Modulation NextMod(Modulation m) =>
+            m == Modulation.AM ? Modulation.FM : m == Modulation.FM ? Modulation.Disabled : Modulation.AM;
+
+        private static string Bar(float level, int width)
+        {
+            int filled = Mathf.Clamp(Mathf.RoundToInt(level * width), 0, width);
+            return "[" + new string('|', filled) + new string('·', width - filled) + "]";
+        }
+    }
+}

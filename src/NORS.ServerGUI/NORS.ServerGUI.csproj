@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>NORS.ServerGUI</AssemblyName>
+    <RootNamespace>NORS.ServerGUI</RootNamespace>
+    <Product>Nuclear Option Radio System - Relay Server (GUI)</Product>
+    <Version>0.3.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NORS.Common\NORS.Common.csproj" />
+    <ProjectReference Include="..\NORS.Server.Core\NORS.Server.Core.csproj" />
+  </ItemGroup>
+
+</Project>

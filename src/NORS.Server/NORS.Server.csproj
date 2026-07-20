@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>NORS.Server</AssemblyName>
+    <RootNamespace>NORS.Server</RootNamespace>
+    <Product>Nuclear Option Radio System - Relay Server</Product>
+    <Version>0.7.0</Version>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="admin.html" LogicalName="NORS.Server.admin.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NORS.Common\NORS.Common.csproj" />
+    <ProjectReference Include="..\NORS.Server.Core\NORS.Server.Core.csproj" />
+  </ItemGroup>
+
+</Project>

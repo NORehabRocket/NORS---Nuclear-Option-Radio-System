@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>NORS.Server.Core</AssemblyName>
+    <RootNamespace>NORS.Server.Core</RootNamespace>
+    <Product>Nuclear Option Radio System - Relay Core</Product>
+    <Version>0.3.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NORS.Common\NORS.Common.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NORS Relay Admin</title>
+<style>
+  :root {
+    --bg:#070b10; --panel:#0d141c; --panel2:#111b26; --line:#1c2a3a;
+    --txt:#c9d6e2; --dim:#64788c; --cyan:#35c8ff; --red:#ff4d5e;
+    --amber:#ffb84d; --green:#2ee6a8; --white:#eef4fa;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font:13px/1.5 "Segoe UI",system-ui,sans-serif; min-height:100vh; }
+  header { display:flex; align-items:center; gap:14px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); }
+  .logo { font-weight:700; letter-spacing:3px; color:var(--white); }
+  .logo span { color:var(--cyan); }
+  .sub { color:var(--dim); letter-spacing:2px; font-size:11px; border-left:1px solid var(--line); padding-left:12px; }
+  .chip { font-size:11px; padding:2px 9px; border-radius:9px; border:1px solid var(--line); color:var(--dim); font-variant-numeric:tabular-nums; }
+  .chip b { color:var(--txt); font-weight:600; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--red); margin-left:auto; }
+  .dot.ok { background:var(--green); box-shadow:0 0 6px var(--green); }
+  main { padding:14px 16px; display:grid; gap:12px; grid-template-columns:1fr; max-width:1100px; margin:0 auto; }
+  .card { background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
+  .card h3 { font-size:11px; letter-spacing:2px; color:var(--dim); margin-bottom:8px; font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th { text-align:left; font-size:10px; letter-spacing:1px; color:var(--dim); padding:3px 8px; border-bottom:1px solid var(--line); }
+  td { padding:4px 8px; border-bottom:1px solid #0e1723; }
+  tr:hover td { background:#0f1926; }
+  button { background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:4px; padding:3px 9px; font:inherit; font-size:11px; cursor:pointer; }
+  button:hover { border-color:var(--cyan); color:var(--white); }
+  button.danger:hover { border-color:var(--red); color:var(--red); }
+  #log { font:11px/1.5 Consolas,monospace; max-height:300px; overflow-y:auto; white-space:pre-wrap; color:#9fb2c4; }
+  #login { max-width:340px; margin:18vh auto; text-align:center; }
+  #login input { width:100%; margin:10px 0; background:var(--panel); border:1px solid var(--line); border-radius:4px; color:var(--txt); padding:9px 12px; font:inherit; }
+  #login button { width:100%; padding:9px; font-size:13px; }
+  #loginErr { color:var(--red); min-height:18px; font-size:12px; }
+  .host { color:var(--amber); }
+  ::-webkit-scrollbar { width:8px; } ::-webkit-scrollbar-thumb { background:var(--line); border-radius:4px; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="card">
+    <div class="logo" style="margin-bottom:6px">NORS<span>RELAY</span></div>
+    <div class="sub" style="border:none;padding:0">DARKSKIES · SERVER ADMIN</div>
+    <input id="pass" type="password" placeholder="admin password" autofocus>
+    <button onclick="login()">SIGN IN</button>
+    <div id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <div class="logo">NORS<span>RELAY</span></div>
+    <span class="sub" id="srvName">—</span>
+    <span class="chip">UDP <b id="srvPort">—</b></span>
+    <span class="chip">UP <b id="uptime">—</b></span>
+    <span class="chip">CLIENTS <b id="nClients">0</b></span>
+    <span class="chip">VOICE IN <b id="vIn">0</b></span>
+    <span class="chip">FWD <b id="vFwd">0</b></span>
+    <span class="chip">VOTEKICK <b id="vk">—</b></span>
+    <div class="dot" id="conn"></div>
+  </header>
+  <main>
+    <div class="card">
+      <h3>CONNECTED CLIENTS</h3>
+      <table>
+        <thead><tr><th>ID</th><th>NAME</th><th>ROOM</th><th>FAC</th><th>IP</th><th>FREQS</th><th>IDLE</th><th></th></tr></thead>
+        <tbody id="clients"><tr><td colspan="8" style="color:var(--dim)">no clients connected</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>BANS</h3>
+      <table>
+        <thead><tr><th>STEAM ID</th><th>IP</th><th>NAME</th><th>REASON</th><th></th></tr></thead>
+        <tbody id="bans"><tr><td colspan="5" style="color:var(--dim)">no bans</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card"><h3>SERVER LOG</h3><div id="log"></div></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let token = sessionStorage.getItem("norsTok") || "";
+let es = null, logRev = -1, logAtBottom = true;
+
+function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+async function login() {
+  $("loginErr").textContent = "";
+  const pass = $("pass").value;
+  try {
+    const r = await fetch("/api/login?pass=" + encodeURIComponent(pass)).then(x => x.json());
+    if (!r.ok) { $("loginErr").textContent = "wrong password"; return; }
+    token = r.token;
+    sessionStorage.setItem("norsTok", token);
+    enter();
+  } catch (e) { $("loginErr").textContent = "server unreachable"; }
+}
+$("pass").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+
+function enter() {
+  $("login").style.display = "none";
+  $("app").style.display = "block";
+  connect();
+}
+
+function connect() {
+  if (es) es.close();
+  es = new EventSource("/api/events?token=" + token);
+  es.onmessage = ev => { render(JSON.parse(ev.data)); $("conn").className = "dot ok"; };
+  es.onerror = () => {
+    $("conn").className = "dot";
+    es.close(); es = null;
+    // token may have expired -> back to login on next failure
+    fetch("/api/state?token=" + token).then(r => {
+      if (r.status === 401) { sessionStorage.removeItem("norsTok"); location.reload(); }
+      else setTimeout(connect, 4000);
+    }).catch(() => setTimeout(connect, 4000));
+  };
+}
+
+function fmtUp(s) {
+  const d = Math.floor(s/86400), h = Math.floor(s%86400/3600), m = Math.floor(s%3600/60);
+  return (d ? d + "d " : "") + h + "h " + m + "m";
+}
+
+function render(s) {
+  $("srvName").textContent = s.name;
+  $("srvPort").textContent = s.port;
+  $("uptime").textContent = fmtUp(s.uptimeSec);
+  $("nClients").textContent = s.clients.length;
+  $("vIn").textContent = s.voiceIn.toLocaleString();
+  $("vFwd").textContent = s.voiceFwd.toLocaleString();
+  $("vk").textContent = s.voteKick ? "ON" : "OFF";
+
+  $("clients").innerHTML = s.clients.length ? s.clients.map(c => `
+    <tr>
+      <td>${c.idHex}</td>
+      <td class="${c.host ? "host" : ""}">${c.host ? "★ " : ""}${esc(c.name)}</td>
+      <td title="game host steam id">${esc(c.room)}</td>
+      <td>${c.faction}</td>
+      <td>${esc(c.ip)}</td>
+      <td>${c.freqs}</td>
+      <td>${c.idle}s</td>
+      <td style="white-space:nowrap">
+        <button onclick="act('kick',${c.id},'${esc(c.name)}')">KICK</button>
+        <button class="danger" onclick="act('ban',${c.id},'${esc(c.name)}')">BAN</button>
+      </td>
+    </tr>`).join("") : '<tr><td colspan="8" style="color:var(--dim)">no clients connected</td></tr>';
+
+  $("bans").innerHTML = s.bans.length ? s.bans.map(b => `
+    <tr>
+      <td>${esc(b.steamId === "0" ? "—" : b.steamId)}</td>
+      <td>${esc(b.ip)}</td>
+      <td>${esc(b.name)}</td>
+      <td>${esc(b.reason)}</td>
+      <td><button onclick="unban('${esc(b.key)}')">UNBAN</button></td>
+    </tr>`).join("") : '<tr><td colspan="5" style="color:var(--dim)">no bans</td></tr>';
+
+  if (s.logRev !== logRev) {
+    logRev = s.logRev;
+    const el = $("log");
+    el.textContent = s.log.join("\n");
+    if (logAtBottom) el.scrollTop = el.scrollHeight;
+  }
+}
+
+$("app").addEventListener("scroll", () => {}, true);
+document.addEventListener("DOMContentLoaded", () => {
+  $("log").addEventListener("scroll", () => {
+    const el = $("log");
+    logAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+  });
+});
+
+async function act(op, id, name) {
+  const reason = prompt(`${op.toUpperCase()} ${name} — reason (optional):`);
+  if (reason === null) return;
+  const r = await fetch(`/api/${op}?token=${token}&id=${id}&reason=${encodeURIComponent(reason)}`).then(x => x.json());
+  if (!r.ok) alert("client not found (already left?)");
+}
+
+async function unban(key) {
+  await fetch(`/api/unban?token=${token}&key=${encodeURIComponent(key)}`);
+}
+
+// resume session if token still valid
+if (token) {
+  fetch("/api/state?token=" + token).then(r => {
+    if (r.ok) enter();
+    else sessionStorage.removeItem("norsTok");
+  }).catch(() => {});
+}
+</script>
+</body>
+</html>

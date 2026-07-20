@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NORS.Common\NORS.Common.csproj" />
+    <ProjectReference Include="..\..\src\NORS.Server.Core\NORS.Server.Core.csproj" />
+  </ItemGroup>
+</Project>
