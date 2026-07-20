@@ -1,5 +1,36 @@
 # NORS — Changelog
 
+## v0.7.0
+
+Six radios, encrypted channels, a browser admin panel for the relay, and the
+DarkSkies ATC integration (covers 0.6.0 + 0.7.0; 0.6.0 was never published).
+**No protocol change** — old relays forward the new traffic, but **encrypted
+nets need 0.7.0 on every client** (others hear scrambled noise, by design).
+
+### 📻 Six radios
+- R1–R6 (was three), each with frequency, AM/FM, monitor toggle and volume.
+  New config: `Radio4–6` freq/mod. Panel and HUD readout scale automatically.
+
+### 🔐 Encrypted channels (SRS-style passcodes)
+- Per-radio passcode (`Radio1–6Crypto` or the ATC panel 🔒): the voice payload
+  itself is scrambled — only same-frequency + same-passcode players hear it,
+  own faction included. Independent of the existing faction-SECURE mode.
+
+### 🖥️ Relay web admin
+- The console relay now hosts a browser dashboard (default
+  `http://localhost:8700/`): live roster with kick/ban, ban list with unban,
+  live log, traffic stats. Password login (`--admin-pass` or auto-generated).
+  New flags: `--web-port`, `--web-lan`, `--no-web`. Makes headless
+  Linux/VPS relays fully manageable.
+
+### 🗼 DarkSkies ATC integration (NorsApi, 0.6.0+)
+- Public API the DarkSkies ATC mod auto-detects: radio stack on its web panel
+  (retune / TX select / monitor / passcodes / one-click tower tuning),
+  hold-to-talk from the browser, and live who's-transmitting glow on its scope.
+  Soft dependency — NORS is unchanged without it.
+
+### 🏛️ Open source
+- Full source now public under the MIT license.
 ## v0.5.0
 
 Audio overhaul + relay expansion, driven directly by server-test feedback. **Plugin‑only — no
