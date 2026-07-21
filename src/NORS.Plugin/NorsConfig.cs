@@ -29,6 +29,7 @@ namespace NORS.Plugin
         public static ConfigEntry<string> AdminPassword;
 
         // ---- Input ----
+        public static ConfigEntry<bool> PttSetupDone;
         public static ConfigEntry<KeyCode> PttKey;
         public static ConfigEntry<KeyCode> PanelKey;
         public static ConfigEntry<KeyCode> CycleTxRadioKey;
@@ -115,7 +116,10 @@ namespace NORS.Plugin
             AdminPassword = cfg.Bind("General", "AdminPassword", "",
                 "If the relay has remote admin enabled, set its admin password here to unlock in-game kick/ban from the radio panel.");
 
-            PttKey = cfg.Bind("Input", "PushToTalk", KeyCode.None, "Hold to transmit on the selected radio.");
+            PttKey = cfg.Bind("Input", "PushToTalk", KeyCode.None,
+                "Hold to transmit on the selected radio. Unbound by default (T would fight the game's chat key) — the first-launch popup asks you to pick one.");
+            PttSetupDone = cfg.Bind("Input", "PttSetupDone", false,
+                "Internal: the first-launch push-to-talk setup was completed. Set to false to see the setup popup again.");
             PanelKey = cfg.Bind("Input", "TogglePanel", KeyCode.F7, "Show / hide the radio panel.");
             CycleTxRadioKey = cfg.Bind("Input", "CycleTxRadio", KeyCode.Y, "Cycle which radio you transmit on.");
             TuneUpKey = cfg.Bind("Input", "TuneUp", KeyCode.Period, "Tune the selected radio up one step.");

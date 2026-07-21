@@ -33,6 +33,14 @@ base's tower frequency, transmit with a hold-to-talk button, and see who's
 transmitting as a live glow on the radar scope. (No hard dependency either
 way — NORS works exactly as before without the ATC mod.)
 
+## Smarter defaults: pick your PTT on first launch
+Push-to-talk now ships **unbound** — the old default (T) is the game's chat key, so
+every chat message keyed the radio. On first launch NORS pops a setup window at the
+main menu: press any key (or quick-pick Caps Lock / tilde / Mouse 4/5) and you're
+set. Existing players keep their configured key and never see the popup. NORS inputs
+are also ignored while the chat box is open. (Thanks **@Appulcake** for the first
+community pull request!)
+
 ## Compatibility
 
 - **Wire protocol unchanged (v2).** Existing relays forward the new traffic;

@@ -30,6 +30,7 @@ namespace NORS.Plugin
         private readonly VoicePlayback _playback = new VoicePlayback();
         private HostBanStore _hostBans;
         private RadioPanel _ui;
+        private readonly FirstRunSetup _firstRun = new FirstRunSetup();
         private readonly MfdOverlay _mfd = new MfdOverlay();
         private readonly MfdBezelPage _mfdPage = new MfdBezelPage();
 
@@ -88,8 +89,14 @@ namespace NORS.Plugin
 
         private static bool P2P => NorsConfig.Transport.Value == VoiceTransport.P2P;
 
-        /// <summary>PTT from the key OR an external caller (NorsApi, e.g. TOWER's web panel).</summary>
-        private static bool PttHeld => (Keys.Held(NorsConfig.PttKey.Value) || NorsApi.ExternalPttHeld) && !CursorManager.GetFlag(CursorFlags.Chat);
+        /// <summary>
+        /// PTT from the key OR an external caller (NorsApi, e.g. the DarkSkies ATC web panel).
+        /// The chat-open gate (PR #1) applies to the KEYBOARD only — the browser PTT button
+        /// isn't part of the keyboard-vs-chatbox conflict, so it keeps working while typing.
+        /// </summary>
+        private static bool PttHeld =>
+            (Keys.Held(NorsConfig.PttKey.Value) && !CursorManager.GetFlag(CursorFlags.Chat))
+            || NorsApi.ExternalPttHeld;
 
         // ---- NorsApi backing (kept internal; the public surface is NorsApi) ----
 
@@ -179,6 +186,7 @@ namespace NORS.Plugin
         private void OnGUI()
         {
             if (!NorsConfig.MasterEnabled.Value || _ui == null) return;
+            if (_firstRun.ShouldShow(_local.InGame)) Guard(() => _firstRun.Render(), "FirstRun");
             Guard(() => _ui.Render(), "UI");
         }
 

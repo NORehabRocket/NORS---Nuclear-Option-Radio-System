@@ -29,7 +29,16 @@ nets need 0.7.0 on every client** (others hear scrambled noise, by design).
   hold-to-talk from the browser, and live who's-transmitting glow on its scope.
   Soft dependency — NORS is unchanged without it.
 
+### ⌨️ Input & first-run (community!)
+- **PTT is unbound by default + inputs ignored while chat is open** — T is the game's
+  chat key, so the old default keyed the radio on every chat message and typing hit
+  the radio hotkeys. Thanks **@Appulcake** for NORS's first community PR!
+- **First-launch setup popup** — at the main menu, NORS asks you to pick your PTT key
+  (press any key, or quick-pick Caps Lock / tilde / Mouse 4/5). Existing users keep
+  their configured key and never see it.
+
 ### 🏛️ Open source
+
 - Full source now public under the MIT license.
 ## v0.5.0
 

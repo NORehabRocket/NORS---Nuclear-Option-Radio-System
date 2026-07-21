@@ -9,7 +9,7 @@ pack; also works standalone.
 
 ## TL;DR
 
-- **Talk:** hold **T**. Radio panel: **F7**. Switch TX radio: **Y**.
+- **Talk:** hold your **PTT key** — you pick it in a popup on first launch. Radio panel: **F7**. Switch TX radio: **Y**.
   Tune: **, / .**
 - It works out of the box over **Steam P2P** — no server, no setup.
 - Six radios (R1–R6). Match **frequency + modulation** with whoever you want
@@ -29,7 +29,7 @@ Extract the DarkSkies pack into your game folder →
 
 | Key (rebindable, F1 → NORS → Input) | Does |
 |---|---|
-| **T** (hold) | Transmit on your TX radio |
+| **Your PTT key** (hold) | Transmit — chosen in the first-launch popup (unbound out of the box; avoid T, that's the game's chat key) |
 | **F7** | Radio panel (frequencies, volumes, connect state, players) |
 | **Y** | Cycle which radio you transmit on |
 | **, / .** | Tune the TX radio down / up one step (25 kHz) |
@@ -85,7 +85,7 @@ doesn't have the same code (your own faction included):
 
 ## 5. Troubleshooting
 
-- **Nobody hears me** — mic plugged in before launch? F7 shows mic state and
+- **Nobody hears me** — is PTT even bound? (First-launch popup, or F1 > NORS > Input.) Mic plugged in before launch? F7 shows mic state and
   a level meter (enable `MicMonitor` to hear yourself). Check you're
   transmitting on the radio you think (**Y** / the HUD readout).
 - **I can't hear them** — same **frequency AND modulation**? In range /
