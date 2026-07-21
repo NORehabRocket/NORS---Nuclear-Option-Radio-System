@@ -115,7 +115,7 @@ namespace NORS.Plugin
             AdminPassword = cfg.Bind("General", "AdminPassword", "",
                 "If the relay has remote admin enabled, set its admin password here to unlock in-game kick/ban from the radio panel.");
 
-            PttKey = cfg.Bind("Input", "PushToTalk", KeyCode.T, "Hold to transmit on the selected radio.");
+            PttKey = cfg.Bind("Input", "PushToTalk", KeyCode.None, "Hold to transmit on the selected radio.");
             PanelKey = cfg.Bind("Input", "TogglePanel", KeyCode.F7, "Show / hide the radio panel.");
             CycleTxRadioKey = cfg.Bind("Input", "CycleTxRadio", KeyCode.Y, "Cycle which radio you transmit on.");
             TuneUpKey = cfg.Bind("Input", "TuneUp", KeyCode.Period, "Tune the selected radio up one step.");

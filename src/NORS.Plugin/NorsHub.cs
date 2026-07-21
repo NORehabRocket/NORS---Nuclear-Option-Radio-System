@@ -89,7 +89,7 @@ namespace NORS.Plugin
         private static bool P2P => NorsConfig.Transport.Value == VoiceTransport.P2P;
 
         /// <summary>PTT from the key OR an external caller (NorsApi, e.g. TOWER's web panel).</summary>
-        private static bool PttHeld => Keys.Held(NorsConfig.PttKey.Value) || NorsApi.ExternalPttHeld;
+        private static bool PttHeld => (Keys.Held(NorsConfig.PttKey.Value) || NorsApi.ExternalPttHeld) && !CursorManager.GetFlag(CursorFlags.Chat);
 
         // ---- NorsApi backing (kept internal; the public surface is NorsApi) ----
 
@@ -186,6 +186,8 @@ namespace NORS.Plugin
 
         private void HandleInput()
         {
+            if (CursorManager.GetFlag(CursorFlags.Chat))
+                return;
             if (Keys.Pressed(NorsConfig.PanelKey.Value)) _ui.Visible = !_ui.Visible;
             if (Keys.Pressed(NorsConfig.CycleTxRadioKey.Value)) _radios.CycleTx();
             if (Keys.Pressed(NorsConfig.TuneUpKey.Value)) _radios.Tune(_radios.Tx, +1);
