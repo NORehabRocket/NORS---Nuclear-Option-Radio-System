@@ -5,7 +5,7 @@
     <AssemblyName>NORS</AssemblyName>
     <RootNamespace>NORS.Plugin</RootNamespace>
     <Product>Nuclear Option Radio System</Product>
-    <Version>0.7.0</Version>
+    <Version>0.7.1</Version>
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
