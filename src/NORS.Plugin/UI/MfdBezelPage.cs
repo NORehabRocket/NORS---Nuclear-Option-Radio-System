@@ -82,7 +82,8 @@ namespace NORS.Plugin.UI
 
         private void Build(Button freeBtn, MFDScreen refScreen, Button refBtn)
         {
-            Text refLabel = refScreen.label;
+            // Game 0.34 migrated MFDScreen.label from UGUI Text to TextMeshProUGUI.
+            TMPro.TextMeshProUGUI refLabel = refScreen.label;
             Canvas canvas = refLabel.canvas;
             if (canvas == null) return;
 
@@ -90,7 +91,7 @@ namespace NORS.Plugin.UI
             // button's row using the same label-to-button offset the other rows use.
             _label = Object.Instantiate(refLabel.gameObject, refLabel.transform.parent);
             _label.name = "NORS_Label";
-            var lblText = _label.GetComponent<Text>();
+            var lblText = _label.GetComponent<TMPro.TextMeshProUGUI>();
             if (lblText != null) lblText.text = NorsConfig.MfdPageLabel.Value;
             if (refBtn != null)
                 _label.transform.position = freeBtn.transform.position + (refLabel.transform.position - refBtn.transform.position);
@@ -112,7 +113,10 @@ namespace NORS.Plugin.UI
             brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
             brt.offsetMin = new Vector2(14f, 10f); brt.offsetMax = new Vector2(-14f, -10f);
             _body = bodyGo.GetComponent<Text>();
-            _body.font = refLabel.font;
+            // refLabel is TMP now (0.34) — its TMP_FontAsset can't feed a UGUI Text,
+            // so the body uses Unity's built-in font and only borrows color/size.
+            try { _body.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); }
+            catch (System.Exception) { _body.font = Font.CreateDynamicFontFromOSFont("Consolas", 14); }
             _body.color = refLabel.color;
             _body.fontSize = Mathf.Max(12, Mathf.RoundToInt(refLabel.fontSize * 0.9f * NorsConfig.MfdFontScale.Value));
             _body.alignment = TextAnchor.UpperLeft;

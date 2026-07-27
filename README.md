@@ -15,7 +15,7 @@ AM/FM frequencies, **faction-secure nets driven by the in-game datalink**, reali
   host instead (central admin GUI + persistent bans + rooms). Better for large/community servers.
   Both ends must use the same transport.
 
-> Status: **v0.7.1**. Verified in-game: voice, terrain/range, faction-secure separation, kick/ban,
+> Status: **v0.7.2**. Verified in-game: voice, terrain/range, faction-secure separation, kick/ban,
 > P2P transport, the HUD radio readout, transmitter-side jamming, and Radome relay. See
 > [CHANGELOG.md](CHANGELOG.md) for what's new, and [RELEASING.md](RELEASING.md) for the release
 > process (NOMNOM rules).

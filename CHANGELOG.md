@@ -1,5 +1,16 @@
 # NORS — Changelog
 
+## v0.7.2
+
+**Nuclear Option 0.34 compatibility.** Plugin-only; no relay or wire-format changes.
+
+- **Player names** — 0.34 replaced the `Player.PlayerName` string with a resolved
+  name object (`GetNameOrCensored()`); NORS now uses the game's lookup, restoring
+  callsigns on the panel, roster and HUD readout.
+- **MFD bezel page** — the game's `MFDScreen.label` moved from UGUI `Text` to
+  `TextMeshProUGUI`; the optional RADIO page builds against the new type (body text
+  now uses a built-in font since a TMP font asset can't feed a UGUI Text).
+- Required on game 0.34; older NORS builds error when reading player names there.
 ## v0.7.1
 
 ### ⌨️ Input & first-run (community!)

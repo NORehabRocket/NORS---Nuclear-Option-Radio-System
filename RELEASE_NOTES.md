@@ -1,24 +1,21 @@
-# NORS 0.7.1 — Release Notes
+# NORS 0.7.2 — Release Notes
 
-A quick follow-up to 0.7.0, fixing the oldest annoyance in the mod — and
-carrying NORS's **first community pull request**.
+**Compatibility update for Nuclear Option 0.34.** Update to this version if
+you're on the current game build.
 
-## Push-to-talk no longer fights the chat box
-The old default PTT key (T) is also the game's **chat key** — so opening chat
-keyed your radio every time, and typing a message could hit the radio hotkeys
-(panel, tuning, TX switch). Now:
+## Fixed for game 0.34
+- **Player names** — 0.34 replaced the plain `PlayerName` string with a
+  resolved/censored name object. NORS now uses the game's own name lookup, so
+  callsigns show correctly again on the radio panel, roster and HUD readout.
+- **MFD bezel page** — the game's MFD labels moved from Unity UI text to
+  TextMeshPro; the optional NORS "RADIO" page follows suit and builds against
+  the new type.
 
-- **PTT ships unbound**, and all NORS inputs are **ignored while the chat box
-  is open**. Huge thanks to **@Appulcake** for the PR — the first community
-  contribution since NORS went open source. o7
-- **First-launch setup popup** — new players get a window at the main menu:
-  press any key to bind push-to-talk, or quick-pick **Caps Lock**, **~**,
-  **Mouse 4** or **Mouse 5**. Bind or skip; it never appears again.
-- **Existing players are untouched** — if your config already has a PTT key,
-  you keep it and never see the popup.
-- The DarkSkies ATC panel's browser push-to-talk stays live even while the
-  chat box is open (it's not part of the keyboard conflict).
+Nothing else changed — radios, encryption, propagation, transports and the
+relay all behave exactly as in 0.7.1.
 
 ## Compatibility
-Plugin-only update — no relay/server changes, no wire-format changes.
-Fully compatible with 0.7.0 clients and relays.
+- Plugin-only update — **no relay/server update needed**, no wire-format
+  changes. 0.7.2 clients interoperate with 0.7.0/0.7.1 clients and any relay.
+- **On game 0.34 you need this version** — 0.7.1 and older will throw errors
+  when reading player names on the new build.

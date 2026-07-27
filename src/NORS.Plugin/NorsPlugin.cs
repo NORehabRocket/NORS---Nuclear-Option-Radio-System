@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace NORS.Plugin
 {
-    [BepInPlugin(Guid, "Nuclear Option Radio System", "0.7.1")]
+    [BepInPlugin(Guid, "Nuclear Option Radio System", "0.7.2")]
     public class NorsPlugin : BaseUnityPlugin
     {
         public const string Guid = "com.dsr.nors";
@@ -26,7 +26,7 @@ namespace NORS.Plugin
             DontDestroyOnLoad(_hub);
             _hub.AddComponent<NorsHub>();
 
-            Log.LogInfo("Nuclear Option Radio System v0.7.1 online. Press " +
+            Log.LogInfo("Nuclear Option Radio System v0.7.2 online. Press " +
                         NorsConfig.PanelKey.Value + " for the radio panel.");
         }
     }

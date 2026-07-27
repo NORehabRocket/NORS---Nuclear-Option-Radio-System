@@ -1,4 +1,4 @@
-# NORS — Player & Host Guide (v0.7.1)
+# NORS — Player & Host Guide (v0.7.2)
 
 **NORS (Nuclear Option Radio System)** is DCS-SRS-style voice radio for
 Nuclear Option: positional, frequency-based voice with realistic range,
@@ -23,7 +23,7 @@ pack; also works standalone.
 
 Extract the DarkSkies pack into your game folder →
 `BepInEx\plugins\NORS\NORS.dll` (+ `NORS.Common.dll`). Launch. The log shows
-`Nuclear Option Radio System v0.7.1 online`.
+`Nuclear Option Radio System v0.7.2 online`.
 
 ## 2. Using the radio (pilots)
 

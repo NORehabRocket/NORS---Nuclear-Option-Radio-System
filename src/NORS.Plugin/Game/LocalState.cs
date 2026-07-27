@@ -65,7 +65,7 @@ namespace NORS.Plugin.Game
             string overrideName = NorsConfig.PlayerNameOverride.Value;
             Callsign = !string.IsNullOrEmpty(overrideName)
                 ? overrideName
-                : (!string.IsNullOrEmpty(player.PlayerName) ? player.PlayerName : "Pilot");
+                : (!string.IsNullOrEmpty(player.GetNameOrCensored()) ? player.GetNameOrCensored() : "Pilot");
 
             try { SteamId = player.CSteamID.m_SteamID; } catch { SteamId = 0; }
 
@@ -130,7 +130,7 @@ namespace NORS.Plugin.Game
                     try { sid = p.CSteamID.m_SteamID; } catch { }
                     bool self = sid != 0 && sid == SteamId;
                     int fac = p.HQ != null ? (int)p.HQ.NetId : 0;
-                    string nm = self ? Callsign : (!string.IsNullOrEmpty(p.PlayerName) ? p.PlayerName : "Pilot");
+                    string nm = self ? Callsign : (!string.IsNullOrEmpty(p.GetNameOrCensored()) ? p.GetNameOrCensored() : "Pilot");
                     SessionRoster.Add(new RosterEntry { ClientId = 0, SteamId = sid, FactionId = fac, Name = nm });
                     if (sid != 0 && !self) Peers.Add(sid);
                 }
