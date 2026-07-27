@@ -48,6 +48,11 @@ namespace NORS.Plugin
         private readonly List<RosterEntry> _roster = new List<RosterEntry>();
         private readonly List<string> _notices = new List<string>();
 
+        // Last transmission we had to drop because of a passcode mismatch (panel feedback).
+        private int _cryptoBlockedFreqKHz;
+        private bool _cryptoBlockedHasKey;
+        private float _cryptoBlockedAt = -100f;
+
         private void Awake()
         {
             _radios.LoadFromConfig();
@@ -441,7 +446,15 @@ namespace NORS.Plugin
                 // Passcode channel: our tuned radio must hold the matching passcode.
                 // XOR is symmetric, so applying the keystream again restores the audio;
                 // a wrong/absent passcode never even attempts playback.
-                if (!r.HasCrypto || r.KeyId != v.CryptoKeyId) return;
+                if (!r.HasCrypto || r.KeyId != v.CryptoKeyId)
+                {
+                    // Tell the player WHY they're hearing nothing — a silent drop here is
+                    // indistinguishable from "the mod is broken".
+                    _cryptoBlockedFreqKHz = v.TxFreqKHz;
+                    _cryptoBlockedHasKey = r.HasCrypto;
+                    _cryptoBlockedAt = Time.unscaledTime;
+                    return;
+                }
                 Scramble.Apply(v.Audio, 0, v.AudioLen, r.CryptoHash ^ v.Seq);
             }
 
@@ -526,6 +539,15 @@ namespace NORS.Plugin
             _ui.RxFrames = _rxFrames;
             _ui.MicInfo = _capture.Capturing ? _capture.DeviceLabel : (_capture.MicAvailable ? "ready" : "NO MIC");
             _ui.TalkerCount = _playback.ActiveTalkers;
+
+            // Surface a recent crypto-mismatch drop for ~6 s so the player sees a reason
+            // instead of silence ("someone is talking here but your passcode doesn't match").
+            if (Time.unscaledTime - _cryptoBlockedAt < 6f)
+            {
+                _ui.CryptoBlockedMhz = _cryptoBlockedFreqKHz / 1000f;
+                _ui.CryptoBlockedHasKey = _cryptoBlockedHasKey;
+            }
+            else _ui.CryptoBlockedMhz = 0f;
 
             if (p2p)
             {

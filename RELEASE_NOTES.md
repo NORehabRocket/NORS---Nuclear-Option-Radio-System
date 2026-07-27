@@ -25,6 +25,19 @@ instead of restarting the game.
 > frequency and the same AM/FM** on the radio you're using, and SECURE (on by
 > default) means you'll only hear your **own faction**.
 
+## Redesigned radio panel — and passcodes you can actually see
+The F7 panel got the DarkSkies treatment: dark navy and cyan to match the web panels,
+the transmit radio highlighted, and **one compact line per radio** so six radios no
+longer fill your screen (old layout still available: `UI/CompactRadios = false`).
+
+More importantly, **every radio now has a LOCK button** — it lights up when that
+channel is encrypted, and opens a field to set or clear the passcode right there.
+Until now a passcode could only be set in the config file or from the ATC web panel,
+so a radio could end up encrypted with no way to tell in game — you'd just hear
+nothing and assume the mod was broken. **An empty passcode means an open channel:
+anyone on that frequency can hear you.** And if someone transmits with a passcode you
+don't have, the panel now tells you that's what happened instead of staying silent.
+
 ## Fixed for game 0.34
 - **Player names** — 0.34 replaced the plain `PlayerName` string with a
   resolved/censored name object. NORS now uses the game's own lookup, so

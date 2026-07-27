@@ -51,12 +51,18 @@ namespace NORS.Plugin.UI
         public Action<uint> OnAdminKick;
         public Action<uint> OnAdminBan;
 
+        // Passcode ("encryption") feedback + inline editor.
+        public float CryptoBlockedMhz;      // >0 = we just dropped traffic we can't decode
+        public bool CryptoBlockedHasKey;    // true = we have a key, it just doesn't match
+
         private string _adminPwField;
         private Vector2 _scroll;
+        private int _cryptoEditIndex = -1;  // which radio's passcode row is open
+        private string _cryptoField = "";
 
         private readonly RadioSet _radios;
         private const int WindowId = 0x4E4F5253; // 'NORS'
-        private Rect _window = new Rect(40, 80, 380, 0);
+        private Rect _window = new Rect(40, 80, 470, 0);
         private GUIStyle _hdr;
 
         public RadioPanel(RadioSet radios) { _radios = radios; }
@@ -67,8 +73,9 @@ namespace NORS.Plugin.UI
             // Draw() flips the global GUI.enabled to lock the panel while chat is open —
             // restore it no matter what, or a fault in here would grey out every other
             // mod's IMGUI too.
+            Theme.Build();
             bool prevEnabled = GUI.enabled;
-            try { _window = GUILayout.Window(WindowId, _window, Draw, "NORS  ·  Radio"); }
+            try { _window = GUILayout.Window(WindowId, _window, Draw, "NORS  ·  RADIO", Theme.Window); }
             finally { GUI.enabled = prevEnabled; }
         }
 
@@ -126,6 +133,16 @@ namespace NORS.Plugin.UI
 
             for (int i = 0; i < _radios.Radios.Count; i++)
                 DrawRadio(i, _radios.Radios[i]);
+
+            // Passcode mismatch: someone IS transmitting here, we just can't decode it.
+            if (CryptoBlockedMhz > 0f)
+            {
+                GUILayout.Label(
+                    $"<color={Theme.Hex(Theme.Amber)}>LOCK  Encrypted traffic on {CryptoBlockedMhz:000.000} — " +
+                    (CryptoBlockedHasKey ? "your passcode doesn't match." : "you have no passcode for it.") +
+                    " Use LOCK on that radio.</color>",
+                    new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true });
+            }
 
             // --- talkers ---
             GUILayout.Space(4);
@@ -227,26 +244,96 @@ namespace NORS.Plugin.UI
         private void DrawRadio(int index, Radio r)
         {
             bool isTx = index == _radios.TxIndex;
-            GUILayout.BeginVertical(GUI.skin.box);
+            GUIStyle rowStyle = isTx ? Theme.RowTx : (r.HasCrypto ? Theme.RowCrypto : Theme.Row);
+            GUILayout.BeginVertical(rowStyle);
 
+            if (NorsConfig.CompactRadios.Value) DrawRadioCompact(index, r, isTx);
+            else DrawRadioFull(index, r, isTx);
+
+            if (_cryptoEditIndex == index) DrawCryptoEditor(r);
+
+            GUILayout.EndVertical();
+        }
+
+        /// <summary>One line per radio: TX · label · freq · mode · tune · RX · SEC · lock · volume.</summary>
+        private void DrawRadioCompact(int index, Radio r, bool isTx)
+        {
+            GUILayout.BeginHorizontal();
+
+            if (GUILayout.Toggle(isTx, "TX", GUILayout.Width(32)) && !isTx) _radios.TxIndex = index;
+
+            GUILayout.Label($"<color={Theme.Hex(isTx ? Theme.Green : Theme.Cyan)}><b>{r.Label}</b></color>",
+                Theme.Label, GUILayout.Width(24));
+            GUILayout.Label($"{r.FreqMHz:000.000}", Theme.Value, GUILayout.Width(58));
+
+            if (GUILayout.Button(ModLabel(r.Mod), GUILayout.Width(38))) r.Mod = NextMod(r.Mod);
+            if (GUILayout.Button("–", GUILayout.Width(22))) _radios.Tune(r, -1);
+            if (GUILayout.Button("+", GUILayout.Width(22))) _radios.Tune(r, +1);
+
+            r.Rx = GUILayout.Toggle(r.Rx, "RX", GUILayout.Width(38));
+            r.Secure = GUILayout.Toggle(r.Secure, "SEC", GUILayout.Width(40));
+
+            // Passcode: lit when this channel is encrypted. Click to set or clear it —
+            // without this there was no in-game way to tell (or undo) an encrypted radio.
+            bool wantEdit = GUILayout.Toggle(_cryptoEditIndex == index,
+                r.HasCrypto ? $"<color={Theme.Hex(Theme.Amber)}>LOCK</color>" : "lock",
+                new GUIStyle(GUI.skin.button) { richText = true, fontSize = 10 }, GUILayout.Width(38));
+            if (wantEdit && _cryptoEditIndex != index) { _cryptoEditIndex = index; _cryptoField = r.Crypto ?? ""; }
+            else if (!wantEdit && _cryptoEditIndex == index) _cryptoEditIndex = -1;
+
+            r.Volume = GUILayout.HorizontalSlider(r.Volume, 0f, 1f, GUILayout.MinWidth(40));
+            GUILayout.EndHorizontal();
+        }
+
+        /// <summary>Original two-row layout (UI/CompactRadios = false): roomier controls.</summary>
+        private void DrawRadioFull(int index, Radio r, bool isTx)
+        {
             GUILayout.BeginHorizontal();
             if (GUILayout.Toggle(isTx, isTx ? "TX" : "  ", GUILayout.Width(34)) && !isTx)
                 _radios.TxIndex = index;
-            GUILayout.Label($"<b>{r.Label}</b>  {r.FreqMHz:000.000}", new GUIStyle(GUI.skin.label) { richText = true });
+            GUILayout.Label($"<b>{r.Label}</b>  {r.FreqMHz:000.000}" +
+                            (r.HasCrypto ? $"  <color={Theme.Hex(Theme.Amber)}>LOCK</color>" : ""), Theme.Label);
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("–", GUILayout.Width(26))) _radios.Tune(r, -1);
             if (GUILayout.Button("+", GUILayout.Width(26))) _radios.Tune(r, +1);
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(ModLabel(r.Mod), GUILayout.Width(64))) r.Mod = NextMod(r.Mod);
-            r.Rx = GUILayout.Toggle(r.Rx, "RX", GUILayout.Width(44));
-            r.Secure = GUILayout.Toggle(r.Secure, r.Secure ? "SECURE" : "CLEAR", GUILayout.Width(72));
-            GUILayout.Label("Vol", GUILayout.Width(26));
-            r.Volume = GUILayout.HorizontalSlider(r.Volume, 0f, 1f, GUILayout.Width(70));
+            if (GUILayout.Button(ModLabel(r.Mod), GUILayout.Width(52))) r.Mod = NextMod(r.Mod);
+            r.Rx = GUILayout.Toggle(r.Rx, "RX", GUILayout.Width(40));
+            r.Secure = GUILayout.Toggle(r.Secure, r.Secure ? "SECURE" : "CLEAR", GUILayout.Width(68));
+            bool wantEdit = GUILayout.Toggle(_cryptoEditIndex == index, "LOCK", GUILayout.Width(52));
+            if (wantEdit && _cryptoEditIndex != index) { _cryptoEditIndex = index; _cryptoField = r.Crypto ?? ""; }
+            else if (!wantEdit && _cryptoEditIndex == index) _cryptoEditIndex = -1;
+            GUILayout.Label("Vol", Theme.LabelDim, GUILayout.Width(26));
+            r.Volume = GUILayout.HorizontalSlider(r.Volume, 0f, 1f, GUILayout.MinWidth(50));
             GUILayout.EndHorizontal();
+        }
 
-            GUILayout.EndVertical();
+        /// <summary>Inline passcode editor for one radio. Empty passcode = normal open channel.</summary>
+        private void DrawCryptoEditor(Radio r)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Passcode", Theme.LabelDim, GUILayout.Width(60));
+            _cryptoField = GUILayout.TextField(_cryptoField ?? "", 32, GUILayout.MinWidth(90));
+            if (GUILayout.Button("SET", GUILayout.Width(44)))
+            {
+                r.SetCrypto((_cryptoField ?? "").Trim());
+                _cryptoEditIndex = -1;
+                NorsPlugin.Log.LogInfo($"NORS: {r.Label} passcode {(r.HasCrypto ? "set" : "cleared")}.");
+            }
+            if (GUILayout.Button("CLEAR", GUILayout.Width(56)))
+            {
+                r.SetCrypto("");
+                _cryptoField = "";
+                _cryptoEditIndex = -1;
+                NorsPlugin.Log.LogInfo($"NORS: {r.Label} passcode cleared.");
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.Label(r.HasCrypto
+                    ? $"<color={Theme.Hex(Theme.Amber)}>Encrypted — only radios with this exact passcode hear this channel.</color>"
+                    : $"<color={Theme.Hex(Theme.Dim)}>Empty = open channel: anyone on this frequency can hear you.</color>",
+                Theme.Label);
         }
 
         private static string ModLabel(Modulation m) =>

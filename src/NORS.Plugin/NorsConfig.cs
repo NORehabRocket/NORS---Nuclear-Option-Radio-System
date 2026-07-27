@@ -28,6 +28,9 @@ namespace NORS.Plugin
         public static ConfigEntry<bool> AutoConnect;
         public static ConfigEntry<string> AdminPassword;
 
+        // ---- UI ----
+        public static ConfigEntry<bool> CompactRadios;
+
         // ---- Input ----
         public static ConfigEntry<bool> PttSetupDone;
         public static ConfigEntry<KeyCode> PttKey;
@@ -115,6 +118,10 @@ namespace NORS.Plugin
                 "Automatically connect to the relay when you spawn into a mission.");
             AdminPassword = cfg.Bind("General", "AdminPassword", "",
                 "If the relay has remote admin enabled, set its admin password here to unlock in-game kick/ban from the radio panel.");
+
+            CompactRadios = cfg.Bind("UI", "CompactRadios", true,
+                "Radio panel layout: one compact line per radio (recommended with 6 radios). " +
+                "Turn off for the taller two-row layout with a larger volume slider.");
 
             PttKey = cfg.Bind("Input", "PushToTalk", KeyCode.None,
                 "Hold to transmit on the selected radio. Unbound by default (T would fight the game's chat key) — the first-launch popup asks you to pick one.");

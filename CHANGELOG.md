@@ -5,6 +5,20 @@
 **Nuclear Option 0.34 compatibility + the chat/radio input fix.** Plugin-only; no
 relay or wire-format changes.
 
+### 🎨 Radio panel redesign + in-game passcode control
+- **DarkSkies look** — the F7 panel now matches the web panels (dark navy, cyan accents),
+  with the transmit radio highlighted green and encrypted radios tinted amber.
+- **One compact line per radio** instead of two rows — the six-radio stack is about half
+  as tall. Set `UI/CompactRadios = false` for the old roomier two-row layout.
+- **Passcodes are now visible and editable in game.** Each radio has a **LOCK** button:
+  it lights amber when that channel is encrypted, and opens an inline field to set or
+  clear the passcode. Previously a passcode could only be set from the config file or
+  the DarkSkies ATC web panel — so a radio could be silently encrypted with no way to
+  see it or undo it in game, which looked exactly like "the radio is broken".
+  **An empty passcode is an open channel** — everyone on that frequency hears you.
+- **"Encrypted traffic you can't decode" warning** — if someone transmits on your
+  frequency with a passcode you don't have (or a different one), the panel now says so
+  instead of leaving you in silence.
 ### ⌨️ Chat no longer touches the radio (community-reported)
 - **All NORS input stands down while the game's chat box is open** — PTT, panel key,
   cycle-TX, tune keys and the MFD toggle. Typing a `,` or `.` used to retune your
