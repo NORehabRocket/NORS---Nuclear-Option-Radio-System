@@ -2,7 +2,20 @@
 
 ## v0.7.2
 
-**Nuclear Option 0.34 compatibility.** Plugin-only; no relay or wire-format changes.
+**Nuclear Option 0.34 compatibility + the chat/radio input fix.** Plugin-only; no
+relay or wire-format changes.
+
+### ⌨️ Chat no longer touches the radio (community-reported)
+- **All NORS input stands down while the game's chat box is open** — PTT, panel key,
+  cycle-TX, tune keys and the MFD toggle. Typing a `,` or `.` used to retune your
+  transmit radio (and `y` switched which radio it was), so after a few chat messages
+  you and your wingman were on different frequencies — the classic "only one of the
+  default frequencies works" report. Hotkey gating from **@Appulcake**'s PR; extended
+  here to the MFD toggle and the radio UI.
+- **The radio panel greys out while chat is open** (with a "chat open" note) so stray
+  clicks and the admin password field can't eat keystrokes mid-message.
+- **New "Reset to defaults" button** on the F7 panel — one click back to your
+  configured frequencies if a radio ends up somewhere unexpected.
 
 - **Player names** — 0.34 replaced the `Player.PlayerName` string with a resolved
   name object (`GetNameOrCensored()`); NORS now uses the game's lookup, restoring

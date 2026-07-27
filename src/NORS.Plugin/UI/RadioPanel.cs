@@ -64,12 +64,29 @@ namespace NORS.Plugin.UI
         public void Render()
         {
             if (!Visible) return;
-            _window = GUILayout.Window(WindowId, _window, Draw, "NORS  ·  Radio");
+            // Draw() flips the global GUI.enabled to lock the panel while chat is open —
+            // restore it no matter what, or a fault in here would grey out every other
+            // mod's IMGUI too.
+            bool prevEnabled = GUI.enabled;
+            try { _window = GUILayout.Window(WindowId, _window, Draw, "NORS  ·  Radio"); }
+            finally { GUI.enabled = prevEnabled; }
         }
 
         private void Draw(int id)
         {
             if (_hdr == null) _hdr = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
+
+            // While the player is typing in the game's chat box the whole panel goes
+            // read-only: you can still see your frequencies, but nothing can be
+            // clicked or typed into (the admin password field would otherwise eat
+            // keystrokes, and stray clicks could retune a radio mid-message).
+            bool chatOpen = GameInput.ChatOpen;
+            if (chatOpen)
+            {
+                GUILayout.Label("<color=#ffd24a>⌨ Chat open — radio controls locked</color>",
+                    new GUIStyle(GUI.skin.label) { richText = true, fontStyle = FontStyle.Bold });
+            }
+            GUI.enabled = !chatOpen;
 
             // --- status ---
             string status =
@@ -95,7 +112,17 @@ namespace NORS.Plugin.UI
             GUILayout.EndHorizontal();
 
             GUILayout.Space(4);
+            GUILayout.BeginHorizontal();
             GUILayout.Label("Radios", _hdr);
+            GUILayout.FlexibleSpace();
+            // Recovery: the tune keys nudge the TX radio, so a stray key press can leave
+            // you off-frequency with no obvious way back. One click restores the defaults.
+            if (GUILayout.Button("Reset to defaults", GUILayout.Width(130)))
+            {
+                _radios.LoadFromConfig();
+                NorsPlugin.Log.LogInfo("NORS: radios reset to configured defaults.");
+            }
+            GUILayout.EndHorizontal();
 
             for (int i = 0; i < _radios.Radios.Count; i++)
                 DrawRadio(i, _radios.Radios[i]);
@@ -193,6 +220,7 @@ namespace NORS.Plugin.UI
             GUILayout.Label($"<color=#999999>PTT: {NorsConfig.PttKey.Value}   Cycle TX: {NorsConfig.CycleTxRadioKey.Value}   " +
                             $"Tune: {NorsConfig.TuneDownKey.Value}/{NorsConfig.TuneUpKey.Value}</color>", rich);
 
+            GUI.enabled = true;
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
         }
 

@@ -39,8 +39,9 @@ namespace NORS.Plugin.UI
             GUILayout.Space(6);
 
             // Keyboard capture via the IMGUI event stream (legacy-input-safe).
+            // Never while the chat box has the keyboard, or typing would bind a key.
             Event e = Event.current;
-            if (e != null && e.type == EventType.KeyDown
+            if (!GameInput.ChatOpen && e != null && e.type == EventType.KeyDown
                 && e.keyCode != KeyCode.None && e.keyCode != KeyCode.Escape)
             {
                 _picked = e.keyCode;

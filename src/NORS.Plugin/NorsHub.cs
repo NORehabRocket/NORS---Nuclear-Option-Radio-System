@@ -95,7 +95,7 @@ namespace NORS.Plugin
         /// isn't part of the keyboard-vs-chatbox conflict, so it keeps working while typing.
         /// </summary>
         private static bool PttHeld =>
-            (Keys.Held(NorsConfig.PttKey.Value) && !CursorManager.GetFlag(CursorFlags.Chat))
+            (Keys.Held(NorsConfig.PttKey.Value) && !GameInput.ChatOpen)
             || NorsApi.ExternalPttHeld;
 
         // ---- NorsApi backing (kept internal; the public surface is NorsApi) ----
@@ -194,7 +194,7 @@ namespace NORS.Plugin
 
         private void HandleInput()
         {
-            if (CursorManager.GetFlag(CursorFlags.Chat))
+            if (GameInput.ChatOpen)
                 return;
             if (Keys.Pressed(NorsConfig.PanelKey.Value)) _ui.Visible = !_ui.Visible;
             if (Keys.Pressed(NorsConfig.CycleTxRadioKey.Value)) _radios.CycleTx();
@@ -570,7 +570,7 @@ namespace NORS.Plugin
 
         private void UpdateMfd()
         {
-            if (Keys.Pressed(NorsConfig.MfdToggleKey.Value)) _mfdVisible = !_mfdVisible;
+            if (!GameInput.ChatOpen && Keys.Pressed(NorsConfig.MfdToggleKey.Value)) _mfdVisible = !_mfdVisible;
 
             // Force a clean rebind whenever the aircraft changes (or we leave one), so a readout can't
             // linger on a swapped-out cockpit/HUD.
