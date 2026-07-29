@@ -1,4 +1,4 @@
-# NORS 0.7.2 — Release Notes
+# NORS 0.7.3 — Release Notes
 
 **Required for Nuclear Option 0.34**, and it fixes the "some frequencies just
 don't work" problem people have been hitting in multiplayer.

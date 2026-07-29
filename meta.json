@@ -1,7 +1,7 @@
 {
   "guid": "com.dsr.nors",
   "name": "Nuclear Option Radio System (NORS)",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "author": "DSR",
   "description": "DCS-SRS-style positional voice radio for Nuclear Option. Multi-radio cockpit with AM/FM frequencies, faction-secure nets driven by the in-game datalink, range falloff, radio horizon, and terrain line-of-sight occlusion. Voice works peer-to-peer over Steam by default (no server needed); an optional standalone relay is supported for large/community servers.",
   "website": "",

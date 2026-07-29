@@ -1,6 +1,6 @@
 # NORS — Changelog
 
-## v0.7.2
+## v0.7.3
 
 **Nuclear Option 0.34 compatibility + the chat/radio input fix.** Plugin-only; no
 relay or wire-format changes.
