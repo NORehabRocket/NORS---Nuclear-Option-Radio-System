@@ -42,9 +42,14 @@ foreach ($doc in @("README.md", "CHANGELOG.md", "GUIDE.md", "RELEASE_NOTES.md", 
     if (Test-Path $p) { Copy-Item $p -Destination $stage -Force; Write-Host "  + NORS\$doc" }
 }
 
+# NOTE: do NOT use Compress-Archive here — Windows PowerShell 5.1 writes zip entry
+# names with backslashes, which extracts as one garbled "NORS\NORS.dll" file on
+# Linux/Proton instead of a NORS folder. New-ModZip always writes "/" (see tools\ZipHelper.ps1).
+. (Join-Path $root "tools\ZipHelper.ps1")
+
 $zip = Join-Path $dist "NORS-$version.zip"
-if (Test-Path $zip) { Remove-Item $zip -Force }
-Compress-Archive -Path $stage -DestinationPath $zip -Force
+New-ModZip -SourceDir (Join-Path $dist "pkg") -ZipPath $zip
+Test-ModZip -ZipPath $zip
 Remove-Item (Join-Path $dist "pkg") -Recurse -Force
 
 # NOMNOM's manifest registers the release asset by its exact file name ("1NORS.zip"), so emit a

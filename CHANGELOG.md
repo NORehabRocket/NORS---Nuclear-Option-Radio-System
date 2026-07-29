@@ -5,6 +5,16 @@
 **Nuclear Option 0.34 compatibility + the chat/radio input fix.** Plugin-only; no
 relay or wire-format changes.
 
+### 📦 Fixed: the download itself was a malformed zip (Linux/Proton especially)
+- Release archives were built by Windows PowerShell's `Compress-Archive`, which writes
+  entry names with **backslashes** — the ZIP spec requires `/`. On Linux/Proton a
+  backslash is a legal filename character, so the archive extracted as one file literally
+  named `NORS\NORS.dll` instead of a `NORS` folder — no `NORS.Common.dll` where the
+  plugin expects it, so the mod couldn't load. Windows extractors mostly papered over it,
+  which is why it only showed up for some people.
+- Packaging now writes entry names itself (always `/`) and **verifies** every archive
+  before release (`tools\ZipHelper.ps1`). If a zip ever regresses, packaging fails loudly.
+- Thanks **Lomb(otomy)**, **Wheat**, **nat** and **Maelle** — Maelle pinned the exact cause.
 ### 🎨 Radio panel redesign + in-game passcode control
 - **DarkSkies look** — the F7 panel now matches the web panels (dark navy, cyan accents),
   with the transmit radio highlighted green and encrypted radios tinted amber.
