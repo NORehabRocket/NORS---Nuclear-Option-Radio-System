@@ -2,8 +2,8 @@
 
 ## v0.7.3
 
-**Nuclear Option 0.34 compatibility + the chat/radio input fix.** Plugin-only; no
-relay or wire-format changes.
+**Linux/Proton install fix.** Plugin code is unchanged from 0.7.2 — this release
+exists purely because the *archive* was malformed.
 
 ### 📦 Fixed: the download itself was a malformed zip (Linux/Proton especially)
 - Release archives were built by Windows PowerShell's `Compress-Archive`, which writes
@@ -15,6 +15,12 @@ relay or wire-format changes.
 - Packaging now writes entry names itself (always `/`) and **verifies** every archive
   before release (`tools\ZipHelper.ps1`). If a zip ever regresses, packaging fails loudly.
 - Thanks **Lomb(otomy)**, **Wheat**, **nat** and **Maelle** — Maelle pinned the exact cause.
+
+## v0.7.2
+
+**Nuclear Option 0.34 compatibility + the chat/radio input fix.** Plugin-only; no
+relay or wire-format changes.
+
 ### 🎨 Radio panel redesign + in-game passcode control
 - **DarkSkies look** — the F7 panel now matches the web panels (dark navy, cyan accents),
   with the transmit radio highlighted green and encrypted radios tinted amber.
