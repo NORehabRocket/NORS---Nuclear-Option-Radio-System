@@ -1,5 +1,11 @@
 # NORS — Changelog
 
+## v0.7.4
+
+**Nuclear Option 0.34.x compatibility.** The game moved its player-name API again
+(`GetNameOrCensored()` → `GetDisplayName(PlayerNameContext)`); NORS follows it, and
+all name lookups now go through one helper so the next rename is a one-line fix.
+No relay, wire-format or feature changes — pairs with DarkSkies ATC 0.7.4.
 ## v0.7.3
 
 **Linux/Proton install fix.** Plugin code is unchanged from 0.7.2 — this release
