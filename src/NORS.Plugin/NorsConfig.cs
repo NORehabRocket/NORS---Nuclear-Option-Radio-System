@@ -172,11 +172,13 @@ namespace NORS.Plugin
                 "Radio panel layout: one compact line per radio (recommended with 6 radios). " +
                 "Turn off for the taller two-row layout with a larger volume slider.");
 
-            // Caps Lock by default: it does NOT collide with the game's chat key (T did,
-            // which is why this was briefly unbound) and it's a common PTT key. Shipping
-            // unbound meant anyone who skipped the setup popup was silently mute forever.
-            PttKey = cfg.Bind("Input", "PushToTalk", KeyCode.CapsLock,
-                "Hold to transmit on the selected radio. Unbound by default (T would fight the game's chat key) — the first-launch popup asks you to pick one.");
+            // Deliberately UNBOUND out of the box. There is no key we can pick for someone:
+            // T fights the game's chat, and Caps Lock toggles caps every time you transmit, so
+            // you end up typing in shout case afterwards. The player picks their own in the
+            // first-launch popup; the safety net below is what stops that being silent.
+            PttKey = cfg.Bind("Input", "PushToTalk", KeyCode.None,
+                "Hold to transmit on the selected radio. Unbound until you choose one — the " +
+                "first-launch popup asks, and the radio panel warns in red until it is set.");
             PttSetupDone = cfg.Bind("Input", "PttSetupDone", false,
                 "Internal: the first-launch push-to-talk setup was completed. Set to false to see the setup popup again.");
 

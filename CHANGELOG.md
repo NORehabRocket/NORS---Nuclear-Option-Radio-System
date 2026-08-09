@@ -125,8 +125,10 @@ authentication, ban-by-SteamID, and a Steam server-browser listing.
 **Fixes "nobody can hear each other".** Shipping PTT unbound (0.7.1) meant anyone who
 skipped the first-launch popup was silently unable to transmit, with no indication.
 
-- **PTT defaults to Caps Lock** — no chat-key conflict, works out of the box.
-- The setup popup's skip option **binds Caps Lock instead of leaving it unbound**.
+- **PTT stays unbound until you choose a key** — there is no good key to pick on your behalf
+  (T fights the game's chat, and Caps Lock toggles caps every time you transmit). Skipping the
+  popup leaves it unbound on purpose.
+- What changed is that unbound is **no longer silent**: see below.
 - **Red "PUSH-TO-TALK IS NOT BOUND" warning** in the F7 panel with one-click binds
   if it's ever None.
 - **Auto-rescue**: a config with no PTT key re-arms the setup popup on next launch

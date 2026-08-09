@@ -11,7 +11,7 @@ namespace NORS.Plugin.UI
     {
         private Rect _win = new Rect(0, 0, 440, 0);
         private bool _positioned;
-        private KeyCode _picked = KeyCode.CapsLock;   // pre-selected so BIND is always safe
+        private KeyCode _picked = KeyCode.None;   // nothing pre-selected: the player chooses
 
         /// <summary>Show until answered, but only outside a mission (main menu).</summary>
         public bool ShouldShow(bool inGame)
@@ -70,12 +70,16 @@ namespace NORS.Plugin.UI
                 NorsPlugin.Log.LogInfo($"NORS: push-to-talk bound to {_picked}.");
             }
             GUI.enabled = true;
-            // "Skip" must never leave someone mute — fall back to Caps Lock rather than None.
-            if (GUILayout.Button("Use CAPS LOCK"))
+            // Skipping leaves PTT unbound on purpose — we don't pick a key for the player.
+            // It isn't a silent failure: the panel warns in red with one-click binds, and the
+            // popup re-arms on the next launch until a key is actually chosen.
+            if (GUILayout.Button("Skip for now"))
             {
-                if (NorsConfig.PttKey.Value == KeyCode.None) NorsConfig.PttKey.Value = KeyCode.CapsLock;
                 NorsConfig.PttSetupDone.Value = true;
-                NorsPlugin.Log.LogInfo($"NORS: push-to-talk left as {NorsConfig.PttKey.Value}.");
+                NorsPlugin.Log.LogWarning(NorsConfig.PttKey.Value == KeyCode.None
+                    ? "NORS: push-to-talk left unbound — you cannot transmit until you set one " +
+                      "(F7 panel, or F1 > NORS > Input)."
+                    : $"NORS: push-to-talk left as {NorsConfig.PttKey.Value}.");
             }
             GUILayout.EndHorizontal();
 

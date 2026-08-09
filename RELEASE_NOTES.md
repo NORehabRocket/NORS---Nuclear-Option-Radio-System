@@ -88,14 +88,18 @@ so peer-to-peer voice has no address to send to. That is a property of the serve
 bug, and no client-side mod can work around it — which is exactly why NORS can now host voice on
 the server instead. The panel tells you which situation you're in rather than failing silently.
 
-## 7. Push-to-talk can no longer be left unbound
+## 7. Unbound push-to-talk is no longer a silent failure
 
-Shipping PTT unbound in 0.7.1 meant anyone who skipped the first-launch popup was silently unable
-to transmit.
+Push-to-talk still ships **unbound**, and that's deliberate — there is no key worth choosing on
+your behalf. `T` fights the game's chat box, and Caps Lock toggles caps every time you key the
+mic, so you end up typing in shout case afterwards. You pick your own.
 
-- **PTT defaults to Caps Lock**, and the popup's skip option binds it rather than nothing.
-- If PTT is ever unbound the panel says so in red with one-click bind buttons, and the setup
-  popup re-arms on next launch.
+What changed is that it can no longer strand you without saying so:
+
+- The first-launch popup asks you to bind one; **Skip** leaves it unbound and says so in the log.
+- While PTT is unbound the radio panel shows a **red warning with one-click bind buttons**.
+- The setup popup **re-arms on every launch** until a key is actually set, so anyone stranded by
+  an earlier version gets asked again.
 
 ---
 
