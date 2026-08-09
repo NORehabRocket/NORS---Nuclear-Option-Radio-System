@@ -202,11 +202,11 @@ namespace NORS.Plugin.Net
         }
 
         public void SendVoice(uint seq, int txFreqKHz, Modulation mod, int factionId, byte crypto,
-            float x, float y, float z, byte[] audio, int audioLen, string callsign, byte txJam)
+            float x, float y, float z, byte[] audio, int audioLen, string callsign, byte txJam, int stableFactionId)
         {
             lock (_sendLock)
             {
-                Packets.WriteVoice(_w, ClientId, seq, txFreqKHz, mod, factionId, crypto, x, y, z, audio, 0, audioLen, callsign, txJam);
+                Packets.WriteVoice(_w, ClientId, seq, txFreqKHz, mod, factionId, crypto, x, y, z, audio, 0, audioLen, callsign, txJam, stableFactionId);
                 Send();
             }
         }

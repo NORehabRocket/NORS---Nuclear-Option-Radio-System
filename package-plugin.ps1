@@ -29,7 +29,7 @@ if (Test-Path (Join-Path $dist "pkg")) { Remove-Item (Join-Path $dist "pkg") -Re
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 # Allowlist: ONLY these belong in the plugin folder, plus the release docs.
-$required = @("NORS.dll", "NORS.Common.dll")
+$required = @("NORS.dll", "NORS.Common.dll", "NORS.Server.Core.dll")
 foreach ($f in $required) {
     $src = Join-Path $bin $f
     if (-not (Test-Path $src)) { throw "Missing build output: $src" }
@@ -37,7 +37,7 @@ foreach ($f in $required) {
     Write-Host "  + NORS\$f"
 }
 Copy-Item (Join-Path $root "meta.json") -Destination $stage -Force; Write-Host "  + NORS\meta.json"
-foreach ($doc in @("README.md", "CHANGELOG.md", "GUIDE.md", "RELEASE_NOTES.md", "LICENSE")) {
+foreach ($doc in @("README.md", "CHANGELOG.md", "GUIDE.md", "SERVER-GUIDE.md", "RELEASE_NOTES.md", "LICENSE")) {
     $p = Join-Path $root $doc
     if (Test-Path $p) { Copy-Item $p -Destination $stage -Force; Write-Host "  + NORS\$doc" }
 }

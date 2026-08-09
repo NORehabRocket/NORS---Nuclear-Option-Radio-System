@@ -5,7 +5,7 @@ using UnityEngine;
 namespace NORS.Plugin
 {
     /// <summary>How voice is carried. P2P = direct over Steam (no server). Relay = a standalone relay host.</summary>
-    internal enum VoiceTransport { P2P, Relay }
+    internal enum VoiceTransport { Auto, P2P, Relay }
 
     internal enum MfdCorner { TopLeft, TopRight, BottomLeft, BottomRight }
 
@@ -27,6 +27,15 @@ namespace NORS.Plugin
         public static ConfigEntry<string> PlayerNameOverride;
         public static ConfigEntry<bool> AutoConnect;
         public static ConfigEntry<string> AdminPassword;
+        public static ConfigEntry<string> Moderators;
+
+        // ---- Dedicated server (only read when launched with -DedicatedServer) ----
+        public static ConfigEntry<bool> ServerHostRelay;
+        public static ConfigEntry<int> ServerRelayPort;
+        public static ConfigEntry<string> ServerRelayName;
+        public static ConfigEntry<string> ServerAdminPassword;
+        public static ConfigEntry<bool> ServerVoteKick;
+        public static ConfigEntry<string> ServerSharedBanFile;
 
         // ---- UI ----
         public static ConfigEntry<bool> CompactRadios;
@@ -106,12 +115,20 @@ namespace NORS.Plugin
         public static void Init(ConfigFile cfg)
         {
             MasterEnabled = cfg.Bind("General", "MasterEnabled", true, "Master switch for the NORS radio system.");
-            Transport = cfg.Bind("General", "Transport", VoiceTransport.P2P,
-                "P2P = voice goes directly between players over Steam (no server, no port forwarding). " +
-                "Relay = everyone connects to a standalone NORS relay host (central admin/bans). Both players must match.");
-            ServerHost = cfg.Bind("General", "ServerHost", "127.0.0.1",
-                "Hostname or IP of the NORS relay server everyone connects to (like an SRS server address).");
-            ServerPort = cfg.Bind("General", "ServerPort", NorsProtocol.DefaultPort, "UDP port of the relay server.");
+            Transport = cfg.Bind("General", "Transport", VoiceTransport.Auto,
+                "Auto (recommended) works it out per server: it asks the game server whether it hosts " +
+                "voice, and falls back to direct Steam P2P if not. P2P = always direct between players " +
+                "(no server, but it needs a server that shares Steam ids, and it doesn't scale past a " +
+                "small lobby). Relay = always connect to a relay, using ServerHost/ServerPort.");
+            ServerHost = cfg.Bind("General", "ServerHost", "auto",
+                "Where the voice relay is. 'auto' (recommended) uses the game server you are already " +
+                "connected to - a server running NORS hosts voice itself, so there is nothing to type. " +
+                "Set a hostname or IP to point at a standalone relay instead. Auto can't resolve an " +
+                "address on Steam-socket servers, but those support P2P voice anyway.");
+            ServerPort = cfg.Bind("General", "ServerPort", 0,
+                "UDP port of the relay. 0 (recommended) derives it from the game server's port the same " +
+                "way the server does, so it always matches. Only set this if you point ServerHost at a " +
+                "standalone relay on a fixed port.");
             PlayerNameOverride = cfg.Bind("General", "CallsignOverride", "",
                 "Optional radio callsign. Leave blank to use your in-game player name.");
             AutoConnect = cfg.Bind("General", "AutoConnect", true,
@@ -119,14 +136,58 @@ namespace NORS.Plugin
             AdminPassword = cfg.Bind("General", "AdminPassword", "",
                 "If the relay has remote admin enabled, set its admin password here to unlock in-game kick/ban from the radio panel.");
 
+            ServerHostRelay = cfg.Bind("Server", "HostVoiceRelay", true,
+                "DEDICATED SERVERS ONLY (ignored on a normal client). Run the NORS voice relay inside " +
+                "this game server, so players' voice is carried by the server they're already on. " +
+                "Nothing extra to deploy and nothing for players to configure - clients find it at this " +
+                "server's own address. Turn off if you run a standalone relay instead.");
+            ServerRelayPort = cfg.Bind("Server", "RelayPort", 0,
+                "UDP port for the in-process voice relay. 0 (recommended) derives it from this server's " +
+                "game port by adding 1000 - so 7777 becomes 8777, 7778 becomes 8778, and several servers " +
+                "on one machine never clash. Clients compute the same number, so nobody configures " +
+                "anything. Open that port in the firewall. Setting a fixed port here means players must " +
+                "set ServerPort by hand.");
+            ServerRelayName = cfg.Bind("Server", "RelayName", "",
+                "Name shown to players when they connect. Blank uses a generic name.");
+            ServerAdminPassword = cfg.Bind("Server", "AdminPassword", "",
+                "Password a trusted player can enter in their radio panel to unlock voice kick/ban on " +
+                "this server. Blank disables remote moderation. Prefer Moderation/Moderators (Steam ids) " +
+                "where you can: a password gets shared and outlives the person, an id list does not.");
+            ServerVoteKick = cfg.Bind("Server", "VoteKick", true,
+                "Let players vote to kick someone off voice on this server.");
+            ServerSharedBanFile = cfg.Bind("Server", "SharedBanFile", "",
+                "Path to a ban list shared with your other game servers. Point every server on the " +
+                "same machine (or the same network share, or the same Docker bind mount) at ONE file " +
+                "and a ban on any of them applies everywhere within a few seconds - no central service " +
+                "needed. Blank keeps this server's bans private to itself.");
+
+            Moderators = cfg.Bind("Moderation", "Moderators", "",
+                "Steam ids (comma separated) whose voice mute/bans this client obeys, and who may issue " +
+                "them from the radio panel. The game host is always trusted in a player-hosted lobby, but " +
+                "a DEDICATED server has no host player at all — so without this, nobody can moderate voice " +
+                "there. Communities normally ship their staff's ids here in the modpack. You only obey " +
+                "people on YOUR list, so this cannot be used to mute a server you're on.");
+
             CompactRadios = cfg.Bind("UI", "CompactRadios", true,
                 "Radio panel layout: one compact line per radio (recommended with 6 radios). " +
                 "Turn off for the taller two-row layout with a larger volume slider.");
 
-            PttKey = cfg.Bind("Input", "PushToTalk", KeyCode.None,
+            // Caps Lock by default: it does NOT collide with the game's chat key (T did,
+            // which is why this was briefly unbound) and it's a common PTT key. Shipping
+            // unbound meant anyone who skipped the setup popup was silently mute forever.
+            PttKey = cfg.Bind("Input", "PushToTalk", KeyCode.CapsLock,
                 "Hold to transmit on the selected radio. Unbound by default (T would fight the game's chat key) — the first-launch popup asks you to pick one.");
             PttSetupDone = cfg.Bind("Input", "PttSetupDone", false,
                 "Internal: the first-launch push-to-talk setup was completed. Set to false to see the setup popup again.");
+
+            // Rescue anyone stranded by the old unbound default: if they have no PTT key,
+            // re-arm the setup popup no matter what they answered last time.
+            if (PttKey.Value == KeyCode.None)
+            {
+                PttSetupDone.Value = false;
+                NorsPlugin.Log.LogWarning("NORS: push-to-talk is not bound — you cannot transmit. " +
+                                          "Bind it in the setup popup at the main menu, or F1 > NORS > Input.");
+            }
             PanelKey = cfg.Bind("Input", "TogglePanel", KeyCode.F7, "Show / hide the radio panel.");
             CycleTxRadioKey = cfg.Bind("Input", "CycleTxRadio", KeyCode.Y, "Cycle which radio you transmit on.");
             TuneUpKey = cfg.Bind("Input", "TuneUp", KeyCode.Period, "Tune the selected radio up one step.");

@@ -85,7 +85,8 @@ namespace NORS.Common
         // optional so old clients (which omit it) stay wire-compatible.
         public static void WriteVoice(PacketWriter w, uint clientId, uint seq, int txFreqKHz,
             Modulation mod, int factionId, byte cryptoKeyId, float x, float y, float z,
-            byte[] audio, int audioOffset, int audioLen, string callsign, byte txJam)
+            byte[] audio, int audioOffset, int audioLen, string callsign, byte txJam,
+            int stableFactionId = 0)
         {
             WriteHeader(w, PacketType.Voice);
             w.UInt(clientId);
@@ -99,6 +100,10 @@ namespace NORS.Common
             w.Bytes(audio, audioOffset, audioLen);
             w.Str(callsign);
             w.Byte(txJam);
+            // Trailing/optional: older clients stop reading above and simply don't see it,
+            // which is what keeps 0.7.6 interoperable with 0.7.5 instead of forcing a
+            // protocol bump. legacy factionId above is still sent for exactly that reason.
+            w.Int(stableFactionId);
         }
 
         // ---------------- Roster (server -> clients) ----------------
@@ -176,9 +181,16 @@ namespace NORS.Common
             for (int i = 0; i < n; i++) w.ULong(steamIds[i]);
         }
 
-        public static ulong[] ReadBanList(ref PacketReader r)
+        public static ulong[] ReadBanList(ref PacketReader r) => ReadIdList(ref r);
+
+        /// <summary>Shared count-prefixed id list read. The count is clamped to what the
+        /// datagram actually contains so a malformed/truncated packet can't read past it.</summary>
+        private static ulong[] ReadIdList(ref PacketReader r)
         {
             int n = r.Byte();
+            int avail = r.Remaining / 8;
+            if (n > avail) n = avail;
+            if (n <= 0) return System.Array.Empty<ulong>();
             var ids = new ulong[n];
             for (int i = 0; i < n; i++) ids[i] = r.ULong();
             return ids;
@@ -208,6 +220,14 @@ namespace NORS.Common
         public string Callsign;
         public float TxJam01;   // transmitter's own jam level 0..1 (0 if sender is an older client)
 
+        /// <summary>
+        /// Content-defined faction identity (Encyclopedia lookup index + 1), identical on every
+        /// client. 0 means the sender is pre-0.7.6 or didn't know its faction — in which case the
+        /// receiver falls back to the legacy <see cref="FactionId"/> (an HQ NetId, which is only
+        /// coincidentally the same across clients and is why secure channels went one-way).
+        /// </summary>
+        public int StableFactionId;
+
         /// <summary>Reads a Voice packet body (reader already positioned past [version][type]).</summary>
         public static VoiceHeader Read(ref PacketReader r)
         {
@@ -224,6 +244,7 @@ namespace NORS.Common
             r.Bytes(v.Audio, 0, v.AudioLen);
             v.Callsign = r.Remaining > 0 ? r.Str() : string.Empty;
             v.TxJam01 = r.Remaining > 0 ? r.Byte() / 255f : 0f;
+            v.StableFactionId = r.Remaining >= 4 ? r.Int() : 0;
             return v;
         }
     }

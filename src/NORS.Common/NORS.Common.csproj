@@ -8,7 +8,7 @@
     <AssemblyName>NORS.Common</AssemblyName>
     <RootNamespace>NORS.Common</RootNamespace>
     <Product>Nuclear Option Radio System</Product>
-    <Version>0.7.4</Version>
+    <Version>0.7.7</Version>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <DebugType>portable</DebugType>

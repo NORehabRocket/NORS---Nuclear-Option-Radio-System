@@ -11,7 +11,7 @@ namespace NORS.Plugin.UI
     {
         private Rect _win = new Rect(0, 0, 440, 0);
         private bool _positioned;
-        private KeyCode _picked = KeyCode.None;
+        private KeyCode _picked = KeyCode.CapsLock;   // pre-selected so BIND is always safe
 
         /// <summary>Show until answered, but only outside a mission (main menu).</summary>
         public bool ShouldShow(bool inGame)
@@ -70,9 +70,12 @@ namespace NORS.Plugin.UI
                 NorsPlugin.Log.LogInfo($"NORS: push-to-talk bound to {_picked}.");
             }
             GUI.enabled = true;
-            if (GUILayout.Button("Skip — set it later in F1 > NORS > Input"))
+            // "Skip" must never leave someone mute — fall back to Caps Lock rather than None.
+            if (GUILayout.Button("Use CAPS LOCK"))
             {
+                if (NorsConfig.PttKey.Value == KeyCode.None) NorsConfig.PttKey.Value = KeyCode.CapsLock;
                 NorsConfig.PttSetupDone.Value = true;
+                NorsPlugin.Log.LogInfo($"NORS: push-to-talk left as {NorsConfig.PttKey.Value}.");
             }
             GUILayout.EndHorizontal();
 

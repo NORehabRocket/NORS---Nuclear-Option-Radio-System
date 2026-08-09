@@ -1,19 +1,22 @@
 using System;
 using BepInEx;
 using BepInEx.Logging;
+using NORS.Plugin.Server;
 using UnityEngine;
 
 namespace NORS.Plugin
 {
-    [BepInPlugin(Guid, "Nuclear Option Radio System", "0.7.4")]
+    [BepInPlugin(Guid, "Nuclear Option Radio System", Version)]
     public class NorsPlugin : BaseUnityPlugin
     {
         public const string Guid = "com.dsr.nors";
+        public const string Version = "0.7.7";
 
         internal static NorsPlugin Instance;
         internal static ManualLogSource Log;
 
         private GameObject _hub;
+        private ServerHost _serverHost;
 
         private void Awake()
         {
@@ -22,12 +25,35 @@ namespace NORS.Plugin
 
             NorsConfig.Init(Config);
 
+            // A dedicated server has no local player, no microphone, no panel and (usually) no
+            // Steam client. Starting the normal hub there would throw on the first frame, so the
+            // server path is entirely separate: host the relay, touch nothing else.
+            if (ServerMode.IsDedicatedServer)
+            {
+                if (NorsConfig.ServerHostRelay.Value)
+                {
+                    _serverHost = new ServerHost();
+                    _serverHost.Start();
+                }
+                else
+                {
+                    Log.LogInfo("NORS: dedicated server detected, but Server/HostVoiceRelay is off - " +
+                                "not hosting voice here.");
+                }
+                return;
+            }
+
             _hub = new GameObject("NorsHub") { hideFlags = HideFlags.HideAndDontSave };
             DontDestroyOnLoad(_hub);
             _hub.AddComponent<NorsHub>();
 
-            Log.LogInfo("Nuclear Option Radio System v0.7.4 online. Press " +
+            Log.LogInfo("Nuclear Option Radio System v" + Version + " online. Press " +
                         NorsConfig.PanelKey.Value + " for the radio panel.");
+        }
+
+        private void OnDestroy()
+        {
+            _serverHost?.Stop();
         }
     }
 

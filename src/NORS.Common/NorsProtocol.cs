@@ -15,6 +15,38 @@ namespace NORS.Common
 
         public const int DefaultPort = 5555;
 
+        /// <summary>
+        /// A server hosting voice in-process binds its game port plus this offset, and clients
+        /// probe the same. That way several game servers on ONE machine (7777, 7778, ...) get
+        /// their own relay (8777, 8778, ...) with no port clash and nothing to configure, and a
+        /// client always reaches the relay belonging to the server it is actually playing on.
+        /// Offset by 1000 rather than 1 precisely because operators run servers on consecutive
+        /// ports — +1 would collide with the next game server.
+        /// </summary>
+        public const int RelayPortOffset = 1000;
+
+        /// <summary>Derives the voice port for a game server listening on <paramref name="gamePort"/>.</summary>
+        public static int RelayPortFor(int gamePort)
+        {
+            if (gamePort <= 0) return DefaultPort;
+            int p = gamePort + RelayPortOffset;
+            return (p > 0 && p <= 65535) ? p : DefaultPort;
+        }
+
+        /// <summary>
+        /// Room key for a game server endpoint. Clients on the same game server agree on this
+        /// without being told, which keeps two servers sharing one relay from hearing each other.
+        /// Never returns 0, because the relay treats 0 as "not in a session" and drops the audio.
+        /// </summary>
+        public static ulong RoomFor(string address, int gamePort)
+        {
+            ulong h = 1469598103934665603UL;                  // FNV-1a 64
+            if (!string.IsNullOrEmpty(address))
+                foreach (char c in address) { h ^= char.ToLowerInvariant(c); h *= 1099511628211UL; }
+            h ^= (ulong)gamePort; h *= 1099511628211UL;
+            return h == 0 ? 1UL : h;
+        }
+
         // ---- Audio pipeline (must match on every client; the server is codec-agnostic) ----
         public const int SampleRate = 48000;       // Hz, matches Unity's mixer well
         public const int FrameSamples = 960;       // 20 ms @ 48 kHz, mono

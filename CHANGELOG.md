@@ -1,5 +1,137 @@
 # NORS — Changelog
 
+## v0.7.7
+
+**First public build since 0.7.4.** 0.7.5 and 0.7.6 were developed but never released on their
+own, so everything in all three sections below is new if you are coming from 0.7.4.
+
+Headline: voice now works on dedicated servers — properly, and without anyone configuring
+anything — and a bug that made players randomly unable to hear each other is fixed.
+
+### 🔀 Voice transport is chosen automatically
+`Transport` now defaults to **Auto**: on joining a server NORS asks whether it hosts voice, and
+uses direct Steam P2P if it doesn't. Nobody has to know which one their server supports.
+
+- Prefers the **server relay** when both work — NORS sends uncompressed audio, and in P2P the
+  person talking uploads one copy per listener, so relay is the difference between working and
+  not on anything larger than a small lobby.
+- Falls back to P2P after ~4 s if nothing answers, and **never interrupts working P2P** to go
+  looking for a relay.
+- Re-checks periodically if neither works, so a server that installs NORS later is picked up
+  without a restart. Also recovers if the relay dies mid-session.
+- The panel shows which one it chose. If neither works it says so plainly, with what to do about
+  it — silence and success must not look the same.
+- `Transport = P2P` or `Relay` still force the old behaviour exactly.
+
+### 🔗 Shared bans between servers on one machine or network
+Point several servers at one ban file (`Server/SharedBanFile`) and a voice ban on any of them
+applies to all of them within ~3 seconds — no central service, nothing to authenticate, nothing
+extra to expose. In Docker it's one bind mount shared between containers.
+
+- Anyone already connected who gets banned elsewhere is **removed immediately**, not on their
+  next reconnect.
+- Concurrent bans from two servers both stick: writes take an exclusive lock and re-read before
+  modifying, so nothing is silently lost. Verified with 50 simultaneous bans across two lists.
+- The file can be **edited by hand** while servers run; malformed lines are skipped.
+- Room-scoped bans stay scoped to their own server even though the file is shared.
+
+### 🛡️ Voice moderation now works on dedicated servers
+NORS's P2P mute/ban was host-authoritative on both ends — the host broadcast its ban set,
+and clients only honoured a list arriving from the host's Steam id. On a **dedicated
+server there is no host player**: `NetworkManagerNuclearOption` sets `IsHostPlayer` from
+`networkPlayer.IsHost`, and the host connection there is the server process itself. So
+nobody could send a ban list and nobody would have honoured one — voice moderation was
+silently unavailable on exactly the servers that need it.
+
+Authority is now a **trust list** rather than a network position:
+
+- New `Moderation/Moderators` config — Steam ids, comma separated. Anyone listed can
+  mute/ban for everyone, from the F7 panel, on any server type.
+- **You only obey people on your own list.** Nobody can silence a server just by being
+  in it; they have to already be trusted by the people who'd be affected. Communities
+  ship their staff ids in the modpack and it's seamless for players.
+- The **game host stays trusted automatically** in player-hosted lobbies, so those
+  behave exactly as before with no configuration.
+- Several moderators' lists are **unioned**, so two people moderating at once add up
+  instead of overwriting each other. Revoking someone's trust drops their bans at once.
+- A ban list from an untrusted sender is refused **and logged**, rather than ignored
+  quietly.
+
+## v0.7.6 (developed but never released on its own)
+
+**Fixes "some people can hear each other and some can't" on secure channels.**
+
+### 🔑 Faction-secure channels compared the wrong thing
+With `FactionSecureByDefault` on (the default), *every* radio transmits as
+faction-secure, and every receive was gated on this:
+
+```csharp
+if (v.FactionId != _local.FactionId) return;   // silent drop
+```
+
+…where `FactionId` was **the faction HQ's Mirage NetId**. A NetId is per-spawn runtime
+state, not a content identity, so two clients could hold different values for the same
+faction — after a mission reload, a respawn, or just a different join order. When that
+happened the two players went permanently and *silently* deaf to each other, with no log
+line and nothing in the panel. It also stamped `0` while your HQ was unresolved (spawn
+menu), which nobody else matched. That is the "50-50 on dedicated, fine on player-hosted"
+report: one authoritative host and a tight spawn window hides it; a long-running
+dedicated server does not.
+
+- **Now keyed on the faction's Encyclopedia lookup index** — the same content-defined
+  value the game itself puts on the wire for a faction (`INetworkDefinition`). It is
+  derived from an ordered asset list on every client, so it needs no replication to
+  agree, and survives respawns, mission reloads and join order.
+- **A mismatch is never silent again.** The panel names both ids and says whether it
+  compared the reliable id or fell back to the legacy one.
+- **An unknown faction id no longer drops audio.** It only drops when *both* sides are
+  known and actually differ — being in the spawn menu can't mute you any more.
+- **Fully backward compatible.** The stable id rides as a trailing field, so 0.7.5 and
+  older clients ignore it and keep working off the legacy id exactly as before. No
+  protocol bump, no flag day. Two 0.7.6 clients get the fix; a 0.7.6 and a 0.7.5 client
+  behave as they do today. Verified by round-tripping packets through a byte-exact copy
+  of the 0.7.5 reader.
+- The F7 `diag` toggle now shows transport, faction id, Steam id, peer count and
+  secure-by-default state — enough to diagnose this from one screenshot.
+- Found from reports by **Zookers**, **Critzlez** and **Tarragon**.
+
+## v0.7.5 (developed but never released on its own)
+
+**Two silent failures fixed, and the real cause of "P2P is broken on dedicated
+servers" identified — it's a one-flag server setting, not a NORS limitation.**
+
+### 📡 "TX lights up but nobody hears me" — cause found
+It was never "dedicated servers" as a category. The **server** decides how clients
+authenticate based on its own socket factory:
+
+- Started with **`-socket SteamGameServer`** → clients authenticate through Steam,
+  `AuthData.FromSteam` sets `BasePlayer.SteamID`, it replicates to everyone, and
+  **P2P voice works normally with no relay**.
+- Started with the **default `-socket UDP`** → `AuthData.FromUdp`, `SteamID` is never
+  set, so every remote `Player.CSteamID` is 0. Steam P2P has no address to send to, so
+  TX lights and no audio moves. **No client-side mod can fix this** — the ID never
+  crosses the wire in any form.
+
+So the fix for a UDP server is one launch flag on the server, which also gets it Steam
+authentication, ban-by-SteamID, and a Steam server-browser listing.
+
+- NORS now **detects which socket the session is on** and says exactly that in the F7
+  panel: either "ask the operator for `-socket SteamGameServer`" or "use Transport =
+  Relay", instead of a vague "P2P can't reach anyone".
+- Same explanation goes to the BepInEx log.
+- Reported by Lomb(otomy), Zookers and Wheat.
+
+### 🎙️ Push-to-talk can no longer be left unbound
+**Fixes "nobody can hear each other".** Shipping PTT unbound (0.7.1) meant anyone who
+skipped the first-launch popup was silently unable to transmit, with no indication.
+
+- **PTT defaults to Caps Lock** — no chat-key conflict, works out of the box.
+- The setup popup's skip option **binds Caps Lock instead of leaving it unbound**.
+- **Red "PUSH-TO-TALK IS NOT BOUND" warning** in the F7 panel with one-click binds
+  if it's ever None.
+- **Auto-rescue**: a config with no PTT key re-arms the setup popup on next launch
+  regardless of what was answered before, and logs a warning.
+
 ## v0.7.4
 
 **Nuclear Option 0.34.x compatibility.** The game moved its player-name API again

@@ -10,12 +10,14 @@ AM/FM frequencies, **faction-secure nets driven by the in-game datalink**, reali
   Steam's own P2P networking, separate from the game's netcode). Steam handles NAT traversal/relay,
   so there's **no server, no port forwarding, and nothing to configure** — if both players have the
   mod and are in the same game, it just works. Moderation: the **game host** can mute/ban players for
-  everyone (and the game's own kick removes them entirely).
+  everyone (and the game's own kick removes them entirely). On a **dedicated server** this needs the
+  server to be started with `-socket SteamGameServer`; with the default `-socket UDP` the game never
+  sends anyone's Steam ID, so P2P has no address to send to and the relay must be used instead.
 - **Relay (optional)** — set `Transport = Relay` to route everyone through a standalone NORS relay
   host instead (central admin GUI + persistent bans + rooms). Better for large/community servers.
   Both ends must use the same transport.
 
-> Status: **v0.7.4**. Verified in-game: voice, terrain/range, faction-secure separation, kick/ban,
+> Status: **v0.7.5**. Verified in-game: voice, terrain/range, faction-secure separation, kick/ban,
 > P2P transport, the HUD radio readout, transmitter-side jamming, and Radome relay. See
 > [CHANGELOG.md](CHANGELOG.md) for what's new, and [RELEASING.md](RELEASING.md) for the release
 > process (NOMNOM rules).

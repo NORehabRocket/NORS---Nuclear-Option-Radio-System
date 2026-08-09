@@ -36,10 +36,30 @@ namespace NORS.Plugin.UI
         public int MyFactionId;
         public bool AdminAuthed;
         public bool LocalIsHost;
+        public bool CanModerate;   // host OR a configured moderator
         public string AdminPassword = "";
 
         // P2P mode (voice direct over Steam; host moderates by Steam id, no relay).
         public bool P2PMode;
+        public bool P2PNoPeers;      // players present but no Steam ids -> P2P can't reach anyone
+        public int P2POtherPlayers;
+        public bool P2PUdpServer;    // server runs the plain UDP transport (the actual cause)
+
+        // Auto transport selection.
+        public bool AutoMode;
+        public string AutoStatus = "";
+        public bool AutoProbing;
+        public bool AutoStuck;
+
+        // Faction-secure drop feedback + the diagnostics readout.
+        public bool FactionBlocked;
+        public int FactionBlockedMine, FactionBlockedTheirs;
+        public bool FactionBlockedLegacy;   // one end is pre-0.7.6, so we compared NetIds
+        public int MyStableFactionId;
+        public bool UdpTransport;
+        public int PeerCount;
+        public int OtherPlayers;
+        private bool _showDiag;
         public ulong MySteamId;
         public Action<ulong> OnHostBan;
         public Action<ulong> OnHostUnban;
@@ -105,6 +125,16 @@ namespace NORS.Plugin.UI
             if (!string.IsNullOrEmpty(LastError))
                 GUILayout.Label($"<color=#ff8080>{LastError}</color>", rich);
 
+            // Auto mode picks the transport per server, so say which one it landed on —
+            // "it just works" and "it silently isn't working" must not look the same.
+            if (AutoMode && !string.IsNullOrEmpty(AutoStatus))
+            {
+                string colour = AutoStuck ? Theme.Hex(Theme.Red)
+                    : AutoProbing ? Theme.Hex(Theme.Amber)
+                    : Theme.Hex(Theme.Green);
+                GUILayout.Label($"<color={colour}>◈ {AutoStatus}</color>", rich);
+            }
+
             GUILayout.BeginHorizontal();
             GUILayout.Label($"{Callsign}  ·  {FactionName}");
             GUILayout.FlexibleSpace();
@@ -117,6 +147,57 @@ namespace NORS.Plugin.UI
             GUILayout.Label(Transmitting ? "<color=#ff5050>● TX</color>" : "○ RX", rich, GUILayout.Width(46));
             GUILayout.Label(Bar(MicLevel, 22));
             GUILayout.EndHorizontal();
+
+            // Steam P2P with no addressable peers: the mic works and TX lights up, but the
+            // audio has nowhere to go. This is a server-type limitation, not a user error.
+            if (AutoStuck)
+            {
+                GUILayout.Label(
+                    $"<color={Theme.Hex(Theme.Red)}>⚠ NO VOICE ON THIS SERVER</color>\n" +
+                    $"<color={Theme.Hex(Theme.Txt)}>It isn't running a NORS voice server, and it doesn't " +
+                    "share Steam IDs, so direct peer-to-peer has nobody to reach either. Ask the operator " +
+                    "to install NORS on the server — it's one folder and one port. Meanwhile you can set " +
+                    "<b>Transport = Relay</b> with a <b>ServerHost</b> by hand if your group runs one.</color>",
+                    new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true });
+                GUILayout.Space(4);
+            }
+            else if (P2PNoPeers)
+            {
+                // Name the actual cause. It isn't "dedicated servers" in general — a dedicated
+                // server started with '-socket SteamGameServer' authenticates over Steam and
+                // shares Steam IDs, and P2P works there. Only the plain UDP transport can't.
+                string body = P2PUdpServer
+                    ? $"{P2POtherPlayers} other player(s) here, but this server runs the game's <b>plain UDP " +
+                      "transport</b>, which never sends anyone's Steam ID. Peer-to-peer voice has no address to " +
+                      "send to, so TX lights up and nobody hears you.\n" +
+                      "<b>Best fix (server side):</b> ask the operator to start it with " +
+                      "<b>-socket SteamGameServer</b>. Steam IDs are then shared and P2P works for everyone, " +
+                      "no relay needed.\n" +
+                      "<b>Fix you can do now:</b> F1 &gt; NORS &gt; General &gt; <b>Transport = Relay</b> plus " +
+                      "<b>ServerHost</b>."
+                    : $"{P2POtherPlayers} other player(s) here, but none of them has a Steam ID yet, so P2P has " +
+                      "nobody to send to. If this doesn't clear in a few seconds, use F1 &gt; NORS &gt; General " +
+                      "&gt; <b>Transport = Relay</b> plus <b>ServerHost</b>.";
+
+                GUILayout.Label(
+                    $"<color={Theme.Hex(Theme.Red)}>⚠ P2P CAN'T REACH ANYONE ON THIS SERVER</color>\n" +
+                    $"<color={Theme.Hex(Theme.Txt)}>{body}</color>",
+                    new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true });
+                GUILayout.Space(4);
+            }
+
+            // Unbound PTT is the single most common "the radio doesn't work" cause —
+            // never let it be silent.
+            if (NorsConfig.PttKey.Value == KeyCode.None)
+            {
+                GUILayout.Label($"<color={Theme.Hex(Theme.Red)}>⚠ PUSH-TO-TALK IS NOT BOUND — you cannot transmit.</color>",
+                    new GUIStyle(GUI.skin.label) { richText = true, fontStyle = FontStyle.Bold, wordWrap = true });
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("Bind CAPS LOCK", GUILayout.Width(130))) NorsConfig.PttKey.Value = KeyCode.CapsLock;
+                if (GUILayout.Button("Bind ~", GUILayout.Width(80))) NorsConfig.PttKey.Value = KeyCode.BackQuote;
+                if (GUILayout.Button("Bind MOUSE 4", GUILayout.Width(110))) NorsConfig.PttKey.Value = KeyCode.Mouse3;
+                GUILayout.EndHorizontal();
+            }
 
             GUILayout.Space(4);
             GUILayout.BeginHorizontal();
@@ -141,6 +222,21 @@ namespace NORS.Plugin.UI
                     $"<color={Theme.Hex(Theme.Amber)}>LOCK  Encrypted traffic on {CryptoBlockedMhz:000.000} — " +
                     (CryptoBlockedHasKey ? "your passcode doesn't match." : "you have no passcode for it.") +
                     " Use LOCK on that radio.</color>",
+                    new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true });
+            }
+
+            // Faction-secure mismatch. Before 0.7.6 this dropped in total silence, which is
+            // how "some people just can't hear each other" went undiagnosed for so long.
+            if (FactionBlocked)
+            {
+                GUILayout.Label(
+                    $"<color={Theme.Hex(Theme.Amber)}>⚠ Faction-secure traffic dropped — their faction id " +
+                    $"{FactionBlockedTheirs} ≠ yours {FactionBlockedMine}.</color>" +
+                    (FactionBlockedLegacy
+                        ? $"<color={Theme.Hex(Theme.Dim)}>\nOne of you is on NORS 0.7.5 or older, so this " +
+                          "compared unreliable network ids. Both update to 0.7.6+ and it stops happening.</color>"
+                        : $"<color={Theme.Hex(Theme.Dim)}>\nYou really are on different factions — or set " +
+                          "FactionSecureByDefault = false to talk across them.</color>"),
                     new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true });
             }
 
@@ -173,7 +269,7 @@ namespace NORS.Plugin.UI
                         if (P2PMode)
                         {
                             // P2P: the game host moderates by Steam id (mute/ban), no relay/vote.
-                            if (LocalIsHost && p.SteamId != 0)
+                            if (CanModerate && p.SteamId != 0)
                             {
                                 bool banned = IsBanned != null && IsBanned(p.SteamId);
                                 if (!banned && GUILayout.Button("Ban", GUILayout.Width(50))) OnHostBan?.Invoke(p.SteamId);
@@ -200,9 +296,14 @@ namespace NORS.Plugin.UI
             GUILayout.BeginHorizontal();
             if (P2PMode)
             {
-                GUILayout.Label(LocalIsHost
-                    ? "<color=#7CFC7C>You host this game — Ban/Unban moderate your players</color>"
-                    : "<color=#999999>P2P voice — the game host moderates</color>", rich);
+                GUILayout.Label(
+                    LocalIsHost ? "<color=#7CFC7C>You host this game — Ban/Unban moderate your players</color>"
+                    : CanModerate ? "<color=#7CFC7C>You are a listed moderator — Ban/Unban apply for everyone who lists you</color>"
+                    // On a dedicated server there is no host player at all, so saying "the host
+                    // moderates" would point people at somebody who doesn't exist.
+                    : UdpTransport || MySteamId == 0
+                        ? "<color=#999999>P2P voice — moderated by the Steam ids in Moderation/Moderators</color>"
+                        : "<color=#999999>P2P voice — the game host moderates</color>", rich);
             }
             else if (AdminAuthed)
             {
@@ -231,7 +332,27 @@ namespace NORS.Plugin.UI
 
             // --- diagnostics ---
             GUILayout.Space(4);
+            GUILayout.BeginHorizontal();
             GUILayout.Label($"<color=#8fb8ff>mic {MicInfo}  ·  TX {TxFrames}  ·  RX {RxFrames}  ·  talkers {TalkerCount}</color>", rich);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button(_showDiag ? "diag ▴" : "diag ▾", GUILayout.Width(56))) _showDiag = !_showDiag;
+            GUILayout.EndHorizontal();
+
+            // Everything needed to explain "we can't hear each other" from one screenshot:
+            // who you are, which faction key you're using, and whether P2P has anyone to send to.
+            if (_showDiag)
+            {
+                string faction = MyStableFactionId != 0
+                    ? $"faction {MyStableFactionId}"
+                    : $"<color={Theme.Hex(Theme.Amber)}>faction ?（legacy netid {MyFactionId}）</color>";
+                GUILayout.Label(
+                    $"<color=#999999>{(P2PMode ? "P2P" : "relay")} · " +
+                    $"{(UdpTransport ? "UDP socket" : "steam socket")} · {faction} · " +
+                    $"steam {(MySteamId != 0 ? MySteamId.ToString() : "—")}</color>", rich);
+                GUILayout.Label(
+                    $"<color=#999999>peers {PeerCount}/{OtherPlayers} · secure-by-default " +
+                    $"{(NorsConfig.FactionSecureByDefault.Value ? "on" : "off")} · v{NorsPlugin.Version}</color>", rich);
+            }
 
             GUILayout.Space(2);
             GUILayout.Label($"<color=#999999>PTT: {NorsConfig.PttKey.Value}   Cycle TX: {NorsConfig.CycleTxRadioKey.Value}   " +

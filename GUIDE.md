@@ -1,4 +1,4 @@
-# NORS — Player & Host Guide (v0.7.4)
+# NORS — Player & Host Guide (v0.7.5)
 
 **NORS (Nuclear Option Radio System)** is DCS-SRS-style voice radio for
 Nuclear Option: positional, frequency-based voice with realistic range,
@@ -23,7 +23,7 @@ pack; also works standalone.
 
 Extract the DarkSkies pack into your game folder →
 `BepInEx\plugins\NORS\NORS.dll` (+ `NORS.Common.dll`). Launch. The log shows
-`Nuclear Option Radio System v0.7.4 online`.
+`Nuclear Option Radio System v0.7.5 online`.
 
 ## 2. Using the radio (pilots)
 
@@ -60,9 +60,15 @@ doesn't have the same code (your own faction included):
 
 ## 3. Transports: P2P (default) vs relay
 
-- **P2P (default):** voice goes over Steam's own networking. Nothing to host,
-  no port forwarding — if you can play together, you can talk.
-  Moderation: the game host can mute/ban by Steam id from the F7 panel.
+- **P2P (default):** voice goes over Steam's own networking. Nothing to host, no
+  port forwarding. Moderation: the game host can mute/ban by Steam id from the F7 panel.
+  **Works on Steam-hosted / friend lobbies.**
+  **On dedicated servers it depends on one server-side flag.** A server started with
+  `-socket SteamGameServer` shares every player's Steam ID, and P2P works there with no
+  relay. A server started with the default `-socket UDP` never sends Steam IDs at all,
+  so P2P has nobody to address — TX lights up and nobody hears you. That can only be
+  fixed on the server; no mod can recover an ID the server never sent. NORS detects
+  which one you're on and says so in the F7 panel.
 - **Relay:** set `Transport = Relay` + `ServerHost` in F1 to route through a
   standalone NORS relay server. Use it for large community servers (central
   admin, persistent bans, rooms per game session). Everything else behaves
@@ -85,6 +91,11 @@ doesn't have the same code (your own faction included):
 
 ## 5. Troubleshooting
 
+- **TX lights up but nobody hears me, on a dedicated server** — the server is running
+  the plain UDP socket, which never sends players' Steam IDs, so P2P has nobody to
+  address. F7 says so explicitly. Two fixes: the operator restarts it with
+  **`-socket SteamGameServer`** (best — P2P then works for everyone, no relay), or you
+  switch **Transport = Relay** in F1 > NORS > General and set **ServerHost**.
 - **Nobody hears me** — is PTT even bound? (First-launch popup, or F1 > NORS > Input.) Mic plugged in before launch? F7 shows mic state and
   a level meter (enable `MicMonitor` to hear yourself). Check you're
   transmitting on the radio you think (**Y** / the HUD readout).

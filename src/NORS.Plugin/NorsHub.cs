@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using BepInEx;
@@ -29,6 +29,9 @@ namespace NORS.Plugin
         private readonly VoiceCapture _capture = new VoiceCapture();
         private readonly VoicePlayback _playback = new VoicePlayback();
         private HostBanStore _hostBans;
+        private readonly ModerationAuthority _moderation = new ModerationAuthority();
+        private int _appliedModRevision = -1;
+        private bool _appliedAsModerator;
         private RadioPanel _ui;
         private readonly FirstRunSetup _firstRun = new FirstRunSetup();
         private readonly MfdOverlay _mfd = new MfdOverlay();
@@ -38,6 +41,9 @@ namespace NORS.Plugin
         private bool _socketUp;          // relay socket up
         private bool _p2pStarted;        // P2P transport up
         private bool _userWantsConnection;
+        private bool _warnedNoPeers;
+        private bool _relayHostUnknown;
+        private string _resolvedRelayHost = "";
 
         private float _lastHello, _lastState, _lastPing, _lastBanBroadcast;
         private readonly List<ulong> _banScratch = new List<ulong>();
@@ -52,6 +58,11 @@ namespace NORS.Plugin
         private int _cryptoBlockedFreqKHz;
         private bool _cryptoBlockedHasKey;
         private float _cryptoBlockedAt = -100f;
+
+        // Last faction-secure drop (panel feedback).
+        private int _factionBlockedMine, _factionBlockedTheirs;
+        private bool _factionBlockedLegacy;
+        private float _factionBlockedAt = -100f;
 
         private void Awake()
         {
@@ -73,8 +84,8 @@ namespace NORS.Plugin
                 OnAdminKick = id => _client.SendAdminCommand(AdminOp.Kick, id, ""),
                 OnAdminBan = id => _client.SendAdminCommand(AdminOp.Ban, id, ""),
                 // P2P host moderation (by Steam id, no server needed):
-                OnHostBan = sid => { if (_hostBans.Add(sid)) BroadcastBansNow(); },
-                OnHostUnban = sid => { if (_hostBans.Remove(sid)) BroadcastBansNow(); },
+                OnHostBan = sid => { if (_hostBans.Add(sid)) { _appliedModRevision = -1; BroadcastBansNow(); } },
+                OnHostUnban = sid => { if (_hostBans.Remove(sid)) { _appliedModRevision = -1; BroadcastBansNow(); } },
                 IsBanned = sid => _hostBans.Contains(sid),
                 MyClientId = _clientId,
             };
@@ -92,7 +103,39 @@ namespace NORS.Plugin
             try { _playback.Clear(); } catch { }
         }
 
-        private static bool P2P => NorsConfig.Transport.Value == VoiceTransport.P2P;
+        private readonly TransportSelector _auto = new TransportSelector();
+
+        /// <summary>
+        /// Which transport we are actually using this frame. In Auto the selector decides by
+        /// trying the relay and falling back; in P2P/Relay the player has overridden it.
+        /// </summary>
+        private bool P2P
+        {
+            get
+            {
+                switch (NorsConfig.Transport.Value)
+                {
+                    case VoiceTransport.P2P: return true;
+                    case VoiceTransport.Relay: return false;
+                    default: return !_auto.WantsRelay;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Runs the Auto decision. Kept out of ManageTransport so the two override modes cost
+        /// nothing and behave exactly as they did before Auto existed.
+        /// </summary>
+        private void TickAutoTransport()
+        {
+            if (NorsConfig.Transport.Value != VoiceTransport.Auto) return;
+            _auto.Tick(
+                Time.unscaledTime,
+                _local.InGame,
+                relayCandidate: !string.IsNullOrEmpty(ResolveRelayHost()),
+                relayConnected: _client.Connected,
+                p2pUsable: _local.Peers.Count > 0);
+        }
 
         /// <summary>
         /// PTT from the key OR an external caller (NorsApi, e.g. the DarkSkies ATC web panel).
@@ -211,6 +254,7 @@ namespace NORS.Plugin
 
         private void ManageTransport()
         {
+            TickAutoTransport();
             if (P2P) ManageP2P();
             else ManageRelay();
         }
@@ -233,11 +277,37 @@ namespace NORS.Plugin
 
             _p2p.SetPeers(_local.Peers);
 
-            // Host: drop voice from its own ban list and re-broadcast it to peers periodically.
-            if (_local.IsHost)
+            // No addressable peers: say so plainly rather than transmitting into the void.
+            if (_local.PeersUnavailable)
             {
-                _hostBans.CopyTo(_banScratch);
+                if (!_warnedNoPeers)
+                {
+                    _warnedNoPeers = true;
+                    NorsPlugin.Log.LogWarning(
+                        $"NORS: {_local.OtherPlayerCount} other player(s) here, but nobody has a Steam id, so P2P has " +
+                        "nobody to send to. " + (_local.UdpTransport
+                            ? "This server runs the plain UDP transport, so the game never sends player Steam ids. Ask the " +
+                              "operator to launch it with '-socket SteamGameServer', or set Transport = Relay."
+                            : "Set Transport = Relay, or use a Steam-hosted lobby."));
+                }
+            }
+            else _warnedNoPeers = false;
+
+            // Apply every authority's bans (ours included if we are one), then re-broadcast ours.
+            // This runs for everyone now, not just the host: on a dedicated server there IS no host
+            // player, so gating it on IsHost meant nobody sent bans and nobody applied them.
+            _moderation.Sync(NorsConfig.Moderators.Value);
+            bool amMod = CanModerate;
+            if (_moderation.Revision != _appliedModRevision || amMod != _appliedAsModerator)
+            {
+                _appliedModRevision = _moderation.Revision;
+                _appliedAsModerator = amMod;
+                _moderation.BuildEffective(_hostBans, amMod, _banScratch);
                 _p2p.SetIgnored(_banScratch);
+            }
+
+            if (amMod)
+            {
                 float t = Time.unscaledTime;
                 if (t - _lastBanBroadcast >= 3f) { _lastBanBroadcast = t; BroadcastBansNow(); }
             }
@@ -265,19 +335,30 @@ namespace NORS.Plugin
             _p2pStarted = false;
             _playback.Clear();
             _capture.SetActive(false);
+            _moderation.ClearReceived();   // authorities are per-session
         }
+
+        /// <summary>
+        /// Whether WE may mute/ban for everyone: the game host in a player-hosted lobby, or anyone
+        /// listed in Moderation/Moderators. The latter is the only path that works on a dedicated
+        /// server, where no player is ever flagged as the host.
+        /// </summary>
+        private bool CanModerate =>
+            _local.IsHost || _moderation.IsAuthority(_local.SteamId, _local.RoomId);
 
         private void BroadcastBansNow()
         {
-            if (!_local.IsHost || !_p2p.Ready) return;
-            _hostBans.CopyTo(_banScratch);
-            _p2p.BroadcastBanList(_banScratch.ToArray(), _banScratch.Count);
+            if (!CanModerate || !_p2p.Ready) return;
+            var mine = new List<ulong>();
+            _hostBans.CopyTo(mine);
+            _p2p.BroadcastBanList(mine.ToArray(), mine.Count);
         }
 
-        private void OnHostBanListReceived(ulong[] ids)
+        private void OnHostBanListReceived(ulong from, ulong[] ids)
         {
-            // A non-host client applies the host's mute/ban set.
-            _p2p.SetIgnored(ids);
+            // Whose bans count is decided here, not by network position. Unions with any other
+            // authority's list on the next tick so two moderators don't overwrite each other.
+            _moderation.Accept(from, ids, _local.RoomId);
         }
 
         // ---------------- relay ----------------
@@ -339,12 +420,51 @@ namespace NORS.Plugin
             _capture.Tick(NorsConfig.MicGain.Value);
         }
 
+        /// <summary>
+        /// Where the relay is. "auto" (the default) means the game server we're already connected
+        /// to — a server running NORS hosts voice in-process, so its own address is the answer and
+        /// nobody has to type an IP. Falls back to whatever is configured if the address can't be
+        /// read, which is the case on Steam-socket servers (where P2P works anyway).
+        /// </summary>
+        private string ResolveRelayHost()
+        {
+            string configured = (NorsConfig.ServerHost.Value ?? "").Trim();
+            bool auto = configured.Length == 0 || configured.Equals("auto", StringComparison.OrdinalIgnoreCase);
+            if (!auto) return configured;
+            return _local.ServerAddress ?? "";
+        }
+
+        /// <summary>
+        /// Which port the relay is on. 0 in config means "work it out": a server hosting voice
+        /// in-process binds its game port + RelayPortOffset, so a client on game port 7778 looks
+        /// for voice on 8778 and lands on that server's relay rather than the one next door.
+        /// </summary>
+        private int ResolveRelayPort()
+        {
+            int configured = NorsConfig.ServerPort.Value;
+            if (configured > 0) return configured;
+            return NorsProtocol.RelayPortFor(_local.ServerPort);
+        }
+
         private void Connect()
         {
-            _client.Start(NorsConfig.ServerHost.Value, NorsConfig.ServerPort.Value, _clientId);
+            string host = ResolveRelayHost();
+            if (string.IsNullOrEmpty(host))
+            {
+                // Nothing to connect to yet. Don't spin: wait until we're in a game and the
+                // address resolves, or until the player sets ServerHost by hand.
+                _relayHostUnknown = true;
+                return;
+            }
+            _relayHostUnknown = false;
+            _resolvedRelayHost = host;
+
+            int port = ResolveRelayPort();
+            _client.Start(host, port, _clientId);
             _socketUp = true;
             _lastHello = 0f;
-            NorsPlugin.Log.LogInfo($"NORS connecting to {NorsConfig.ServerHost.Value}:{NorsConfig.ServerPort.Value}...");
+            NorsPlugin.Log.LogInfo($"NORS connecting to {host}:{port}" +
+                                   (host == _local.ServerAddress ? " (this game server)" : "") + "...");
         }
 
         private void Disconnect()
@@ -385,13 +505,13 @@ namespace NORS.Plugin
             {
                 if (!_p2p.Ready) return;
                 _p2p.SendVoice(_clientId, seq, tx.FreqKHz, tx.Mod, _local.FactionId, crypto,
-                    g.x, g.y, g.z, data, len, _local.Callsign, txJam);
+                    g.x, g.y, g.z, data, len, _local.Callsign, txJam, _local.StableFactionId);
             }
             else
             {
                 if (!_client.Connected) return;
                 _client.SendVoice(seq, tx.FreqKHz, tx.Mod, _local.FactionId, crypto,
-                    g.x, g.y, g.z, data, len, _local.Callsign, txJam);
+                    g.x, g.y, g.z, data, len, _local.Callsign, txJam, _local.StableFactionId);
             }
             _txFrames++;
 
@@ -403,7 +523,7 @@ namespace NORS.Plugin
         {
             if (P2P)
             {
-                if (_p2pStarted) _p2p.Receive(ProcessIncoming, _local.RoomId, OnHostBanListReceived);
+                if (_p2pStarted) _p2p.Receive(ProcessIncoming, OnHostBanListReceived);
                 return;
             }
 
@@ -426,7 +546,37 @@ namespace NORS.Plugin
             if (_local.FactionId == _loggedFaction) return;
             _loggedFaction = _local.FactionId;
             string fn = _local.Faction != null ? _local.Faction.factionName : "(none)";
-            NorsPlugin.Log.LogInfo($"NORS faction = '{fn}' id={_local.FactionId}");
+            // Log both: if two players' stable ids ever differ for the same faction name,
+            // that is the smoking gun and it needs to be in the log, not inferred.
+            NorsPlugin.Log.LogInfo(
+                $"NORS faction = '{fn}' stableId={_local.StableFactionId} legacyNetId={_local.FactionId}");
+            if (_local.StableFactionId == 0 && _local.Faction != null)
+                NorsPlugin.Log.LogWarning(
+                    "NORS: faction has no Encyclopedia index — falling back to the legacy NetId for " +
+                    "secure channels, which can disagree between clients.");
+        }
+
+        /// <summary>
+        /// Faction-secure gate for CryptoKeyId 1 (every radio uses it when
+        /// FactionSecureByDefault is on, which is the default — so this decides whether
+        /// almost all traffic is heard at all).
+        ///
+        /// Prefers the content-defined faction id, which is identical on every client. Falls
+        /// back to the legacy HQ NetId only when one end is pre-0.7.6 and didn't send one.
+        /// Drops ONLY when both sides are known and differ: an unknown id (spawn menu, HQ not
+        /// resolved yet, definition list not indexed) must never turn into silent silence.
+        /// </summary>
+        private bool FactionAllows(in VoiceHeader v)
+        {
+            int mine = _local.StableFactionId;
+            int theirs = v.StableFactionId;
+            if (mine == 0 || theirs == 0)
+            {
+                mine = _local.FactionId;      // legacy NetId path, only as good as it ever was
+                theirs = v.FactionId;
+            }
+            if (mine == 0 || theirs == 0) return true;
+            return mine == theirs;
         }
 
         private void ProcessIncoming(VoiceHeader v)
@@ -436,10 +586,15 @@ namespace NORS.Plugin
             Radio r = _radios.FindReceiver(v.TxFreqKHz);
             if (r == null) return;
 
-            if (v.CryptoKeyId == 1)
+            if (v.CryptoKeyId == 1 && !FactionAllows(v))
             {
-                // Legacy faction-secure: intelligible to own faction only.
-                if (v.FactionId != _local.FactionId) return;
+                // Never drop this silently — an unexplained faction mismatch is exactly how
+                // secure channels went one-way for people without a single log line.
+                _factionBlockedMine = _local.StableFactionId != 0 ? _local.StableFactionId : _local.FactionId;
+                _factionBlockedTheirs = v.StableFactionId != 0 ? v.StableFactionId : v.FactionId;
+                _factionBlockedLegacy = _local.StableFactionId == 0 || v.StableFactionId == 0;
+                _factionBlockedAt = Time.unscaledTime;
+                return;
             }
             else if (v.CryptoKeyId >= 2)
             {
@@ -535,6 +690,7 @@ namespace NORS.Plugin
             _ui.MyFactionId = _local.FactionId;
             _ui.MySteamId = _local.SteamId;
             _ui.LocalIsHost = _local.IsHost;
+            _ui.CanModerate = CanModerate;
             _ui.TxFrames = _txFrames;
             _ui.RxFrames = _rxFrames;
             _ui.MicInfo = _capture.Capturing ? _capture.DeviceLabel : (_capture.MicAvailable ? "ready" : "NO MIC");
@@ -549,6 +705,24 @@ namespace NORS.Plugin
             }
             else _ui.CryptoBlockedMhz = 0f;
 
+            // Same treatment for a faction-secure drop. This is the one that used to be silent.
+            _ui.FactionBlocked = Time.unscaledTime - _factionBlockedAt < 6f;
+            if (_ui.FactionBlocked)
+            {
+                _ui.FactionBlockedMine = _factionBlockedMine;
+                _ui.FactionBlockedTheirs = _factionBlockedTheirs;
+                _ui.FactionBlockedLegacy = _factionBlockedLegacy;
+            }
+
+            _ui.AutoMode = NorsConfig.Transport.Value == VoiceTransport.Auto;
+            _ui.AutoStatus = _ui.AutoMode ? _auto.Describe(ResolveRelayPort()) : "";
+            _ui.AutoProbing = _auto.Phase == AutoPhase.ProbingRelay;
+            _ui.AutoStuck = _auto.Phase == AutoPhase.Stuck;
+            _ui.MyStableFactionId = _local.StableFactionId;
+            _ui.UdpTransport = _local.UdpTransport;
+            _ui.PeerCount = _local.Peers.Count;
+            _ui.OtherPlayers = _local.OtherPlayerCount;
+
             if (p2p)
             {
                 _ui.SocketUp = _p2pStarted;
@@ -557,6 +731,9 @@ namespace NORS.Plugin
                 _ui.LastError = _p2p.Ready ? "" : _p2p.LastError;
                 _ui.Roster = _local.InGame ? _local.SessionRoster : EmptyRoster;
                 _ui.AdminAuthed = false;
+                _ui.P2PNoPeers = _local.InGame && _local.PeersUnavailable && !_ui.AutoProbing;
+                _ui.P2POtherPlayers = _local.OtherPlayerCount;
+                _ui.P2PUdpServer = _local.UdpTransport;
             }
             else
             {

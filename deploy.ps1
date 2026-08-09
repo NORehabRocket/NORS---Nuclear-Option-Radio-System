@@ -25,7 +25,7 @@ $stale = Join-Path $dest "Concentus.dll"
 if (Test-Path $stale) { Remove-Item $stale -Force; Write-Host "  - removed stale Concentus.dll" }
 
 # Allowlist: ONLY these belong in the plugin folder.
-$files = @("NORS.dll", "NORS.Common.dll")
+$files = @("NORS.dll", "NORS.Common.dll", "NORS.Server.Core.dll")
 foreach ($f in $files) {
     $src = Join-Path $bin $f
     if (-not (Test-Path $src)) { throw "Missing build output: $src" }

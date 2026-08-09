@@ -104,6 +104,7 @@ namespace NORS.Server.Core
             EndPoint any = new IPEndPoint(IPAddress.Any, 0);
             double nextSweep = Now + 1.0;
             double nextRoster = Now + RosterInterval;
+            double nextBanSync = Now + BanSyncInterval;
 
             while (_run)
             {
@@ -112,7 +113,9 @@ namespace NORS.Server.Core
                     if (!_socket.Poll(200_000, SelectMode.SelectRead))
                     {
                         if (Now >= nextSweep) { Sweep(); nextSweep = Now + 1.0; }
+                if (Now >= nextBanSync) { SyncBans(); nextBanSync = Now + BanSyncInterval; }
                         if (Now >= nextRoster) { BroadcastRoster(); nextRoster = Now + RosterInterval; }
+                        if (Now >= nextBanSync) { SyncBans(); nextBanSync = Now + BanSyncInterval; }
                         continue;
                     }
 
@@ -496,6 +499,43 @@ namespace NORS.Server.Core
         }
 
         /// <summary>Disconnects a client (it may reconnect). Returns true if found.</summary>
+        /// <summary>How often we check whether another server sharing our ban file changed it.</summary>
+        private const double BanSyncInterval = 3.0;
+
+        /// <summary>
+        /// Picks up bans made on other servers that share this ban file, and enforces them here:
+        /// a ban is worthless if someone already connected keeps talking until they reconnect.
+        /// </summary>
+        private void SyncBans()
+        {
+            try
+            {
+                if (!Bans.SyncFromDisk()) return;
+                Emit($"Ban list reloaded from disk ({Bans.Count} entries) - another server changed it.");
+                EnforceBans();
+            }
+            catch { /* never let housekeeping kill the relay loop */ }
+        }
+
+        /// <summary>Disconnects any connected client covered by the current ban list.</summary>
+        public int EnforceBans()
+        {
+            var offenders = new List<ClientSession>();
+            lock (_lock)
+            {
+                foreach (var s in _byId.Values)
+                    if (Bans.IsBanned(s.SteamId, s.Ip, s.Room, out _)) offenders.Add(s);
+            }
+            foreach (var s in offenders)
+            {
+                Bans.IsBanned(s.SteamId, s.Ip, s.Room, out string reason);
+                lock (_lock) _byId.Remove(s.Id);
+                SendAdmin(s.EndPoint, w => Packets.WriteKicked(w, "Banned" + (string.IsNullOrEmpty(reason) ? "" : ": " + reason)));
+                Emit($"Removed {s.Name} - banned on another server sharing this ban list.");
+            }
+            return offenders.Count;
+        }
+
         public bool Kick(uint id, string reason)
         {
             IPEndPoint ep; string name;

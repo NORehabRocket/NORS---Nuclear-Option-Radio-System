@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- net8.0 for the standalone relay; netstandard2.1 so the SAME relay can be hosted
+         in-process by the BepInEx plugin on a dedicated game server (Unity Mono). -->
+    <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>

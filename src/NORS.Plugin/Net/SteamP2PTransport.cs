@@ -69,10 +69,10 @@ namespace NORS.Plugin.Net
         }
 
         public void SendVoice(uint clientId, uint seq, int txFreqKHz, Modulation mod, int factionId, byte crypto,
-            float x, float y, float z, byte[] audio, int audioLen, string callsign, byte txJam)
+            float x, float y, float z, byte[] audio, int audioLen, string callsign, byte txJam, int stableFactionId)
         {
             if (!Ready || _peers.Count == 0) return;
-            Packets.WriteVoice(_w, clientId, seq, txFreqKHz, mod, factionId, crypto, x, y, z, audio, 0, audioLen, callsign, txJam);
+            Packets.WriteVoice(_w, clientId, seq, txFreqKHz, mod, factionId, crypto, x, y, z, audio, 0, audioLen, callsign, txJam, stableFactionId);
             for (int i = 0; i < _peers.Count; i++)
             {
                 ulong id = _peers[i];
@@ -97,10 +97,11 @@ namespace NORS.Plugin.Net
         }
 
         /// <summary>
-        /// Drains incoming P2P packets. Voice frames (not from an ignored id) go to <paramref name="onVoice"/>;
-        /// a BanList from the game host (<paramref name="hostId"/>) goes to <paramref name="onBanList"/>.
+        /// Drains incoming P2P packets. Voice frames (not from an ignored id) go to <paramref name="onVoice"/>.
+        /// A BanList is passed up WITH its sender id — deciding whose bans count is the hub's job now
+        /// (see ModerationAuthority), because on a dedicated server there is no host to compare against.
         /// </summary>
-        public void Receive(Action<VoiceHeader> onVoice, ulong hostId, Action<ulong[]> onBanList)
+        public void Receive(Action<VoiceHeader> onVoice, Action<ulong, ulong[]> onBanList)
         {
             if (!Ready) return;
             int guard = 0;
@@ -121,8 +122,7 @@ namespace NORS.Plugin.Net
                 }
                 else if (type == PacketType.BanList)
                 {
-                    if (hostId != 0 && from == hostId)         // only the game host's ban list is authoritative
-                        onBanList(Packets.ReadBanList(ref r));
+                    onBanList(from, Packets.ReadBanList(ref r));
                 }
             }
         }
