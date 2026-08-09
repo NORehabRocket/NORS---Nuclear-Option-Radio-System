@@ -134,7 +134,10 @@ namespace NORS.Plugin
                 _local.InGame,
                 relayCandidate: !string.IsNullOrEmpty(ResolveRelayHost()),
                 relayConnected: _client.Connected,
-                p2pUsable: _local.Peers.Count > 0);
+                // "P2P is viable", not "someone is here to talk to". Flying alone is normal and
+                // must not be reported as a broken transport; only "others present, none of them
+                // reachable" counts against P2P.
+                p2pUsable: !_local.PeersUnavailable);
         }
 
         /// <summary>

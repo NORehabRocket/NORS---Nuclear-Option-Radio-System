@@ -8,6 +8,13 @@ own, so everything in all three sections below is new if you are coming from 0.7
 Headline: voice now works on dedicated servers — properly, and without anyone configuring
 anything — and a bug that made players randomly unable to hear each other is fixed.
 
+### 🔧 Settings from older versions are migrated
+BepInEx keeps whatever is already in your config file, so a changed default does nothing for
+anyone who has run NORS before. Up to 0.7.4 the relay address defaulted to `127.0.0.1:5555`,
+which now reads as "there is a real relay on my own machine" and stops auto-discovery from ever
+running. NORS rewrites that exact pair to automatic on first launch, once, and leaves a
+genuinely configured relay address alone.
+
 ### 🔀 Voice transport is chosen automatically
 `Transport` now defaults to **Auto**: on joining a server NORS asks whether it hosts voice, and
 uses direct Steam P2P if it doesn't. Nobody has to know which one their server supports.

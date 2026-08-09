@@ -112,6 +112,31 @@ namespace NORS.Plugin
         public static ConfigEntry<float> RelayQualityFactor;
         public static ConfigEntry<bool> DeadTalkFromBase;
 
+        /// <summary>
+        /// BepInEx keeps whatever is already in the file, so changing a default does nothing for
+        /// anyone who has run NORS before. Up to 0.7.4 the relay address defaulted to
+        /// 127.0.0.1:5555, which now means "a real relay on your own machine" and stops
+        /// auto-discovery ever running. Rewrite that one exact pair — and only that pair, so a
+        /// genuinely configured relay is left alone — to the new automatic behaviour.
+        /// </summary>
+        private static void MigrateLegacyDefaults(ConfigFile cfg)
+        {
+            var version = cfg.Bind("General", "ConfigVersion", 0,
+                "Internal: lets NORS update settings that changed meaning between versions. Don't edit.");
+            if (version.Value >= 1) return;
+            version.Value = 1;
+
+            if (ServerHost.Value == "127.0.0.1" && ServerPort.Value == 5555)
+            {
+                ServerHost.Value = "auto";
+                ServerPort.Value = 0;
+                NorsPlugin.Log.LogInfo(
+                    "NORS: updated ServerHost/ServerPort from the old 127.0.0.1:5555 defaults to " +
+                    "automatic. Voice now follows whichever server you join. Set them by hand again " +
+                    "if you really do run a relay on this machine.");
+            }
+        }
+
         public static void Init(ConfigFile cfg)
         {
             MasterEnabled = cfg.Bind("General", "MasterEnabled", true, "Master switch for the NORS radio system.");
@@ -167,6 +192,8 @@ namespace NORS.Plugin
                 "a DEDICATED server has no host player at all — so without this, nobody can moderate voice " +
                 "there. Communities normally ship their staff's ids here in the modpack. You only obey " +
                 "people on YOUR list, so this cannot be used to mute a server you're on.");
+
+            MigrateLegacyDefaults(cfg);
 
             CompactRadios = cfg.Bind("UI", "CompactRadios", true,
                 "Radio panel layout: one compact line per radio (recommended with 6 radios). " +
