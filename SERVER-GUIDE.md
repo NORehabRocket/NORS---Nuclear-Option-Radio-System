@@ -140,7 +140,7 @@ Example:
 [Server]
 HostVoiceRelay = true      # <-- the one you must change
 RelayPort = 0
-RelayName = CritzOS #1
+RelayName = server #1
 AdminPassword = something-long-and-not-shared
 
 [Moderation]
@@ -378,7 +378,7 @@ Look in the BepInEx console or `BepInEx/LogOutput.log` for:
 ```
 [Info : NORS] NORS is hosting voice for this server on UDP 8777 (game port 7777).
               Clients running NORS 0.7.7+ find it automatically — nobody needs to type an address.
-[Info : NORS] NORS relay: Relay 'CritzOS #1' listening on UDP 8777.
+[Info : NORS] NORS relay: Relay 'server #1' listening on UDP 8777.
 ```
 
 As players join you'll see:
