@@ -8,6 +8,12 @@ own, so everything in all three sections below is new if you are coming from 0.7
 Headline: voice now works on dedicated servers — properly, and without anyone configuring
 anything — and a bug that made players randomly unable to hear each other is fixed.
 
+**Upgrading: delete `BepInEx/config/com.dsr.nors.cfg`.** BepInEx keeps existing settings, so an
+old config silently keeps the old defaults — notably `ServerHost = 127.0.0.1`, which points voice
+at your own machine and stops server discovery working. NORS auto-corrects that exact pair on
+first launch and logs it, but deleting the file is the clean fix. Note your PTT key, custom
+frequencies and channel passcodes first.
+
 ### 🔧 Settings from older versions are migrated
 BepInEx keeps whatever is already in your config file, so a changed default does nothing for
 anyone who has run NORS before. Up to 0.7.4 the relay address defaulted to `127.0.0.1:5555`,

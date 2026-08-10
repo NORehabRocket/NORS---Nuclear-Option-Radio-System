@@ -86,6 +86,10 @@ All three DLLs must be present.
 
 ### 3. First run
 
+**Upgrading an existing install?** Delete `BepInEx/config/com.dsr.nors.cfg` first. BepInEx keeps
+whatever is already there, so an old file won't have the `[Server]` section and will still carry
+pre-0.7.7 defaults.
+
 Start the server once and stop it. BepInEx writes:
 
 ```

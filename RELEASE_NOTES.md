@@ -12,6 +12,32 @@ unable to hear each other is **fixed**.
 
 ---
 
+## ⚠ Updating from an earlier version — read this
+
+**Delete your old config file** so the new one is written fresh:
+
+```
+BepInEx/config/com.dsr.nors.cfg
+```
+
+NORS keeps whatever is already in that file, so upgrading does **not** give you the new defaults.
+Several settings changed meaning in this release — most importantly the relay address, which used
+to default to `127.0.0.1:5555`. Left as-is, that points voice at your own PC and the automatic
+server discovery can never work.
+
+NORS will try to correct that one pair for you on first launch and says so in the log. But if
+anything behaves oddly after updating, **delete the file and restart** — that is the clean fix,
+and everything regenerates.
+
+Deleting it does reset your settings, so note these down first if you've changed them:
+
+- your **push-to-talk key** (you'll be asked to bind one again on next launch)
+- any **radio frequencies** you've customised
+- any **channel passcodes** — these are shared with your group and worth copying somewhere safe
+- mic device, gain and volume
+
+---
+
 ## 1. "Some of us can hear each other and some can't" — fixed
 
 Every radio transmits as faction-secure by default, and every incoming transmission was checked
