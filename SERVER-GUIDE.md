@@ -13,8 +13,10 @@ configuration at all — the client works out whether to use your server's voice
 1. Install BepInEx on the dedicated server, same as a client.
 2. Drop the `NORS` folder into `BepInEx/plugins/`.
 3. Start the server once, then stop it (this writes the config file).
-4. Open **UDP `<your game port> + 1000`** in the firewall. Game on `7777` → open `8777`.
-5. Start the server. That's it — players running 0.7.7+ find it automatically.
+4. In `BepInEx/config/com.dsr.nors.cfg`, set **`HostVoiceRelay = true`** under `[Server]`.
+   It ships **off** — hosting voice is something you opt into, not something that happens to you.
+5. Open **UDP `<your game port> + 1000`** in the firewall. Game on `7777` → open `8777`.
+6. Start the server. That's it — players running 0.7.7+ find it automatically.
 
 Nothing to install per-player, no IP for anyone to type, no separate relay container.
 
@@ -115,7 +117,7 @@ harmless on a client.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `HostVoiceRelay` | `true` | Host voice inside this game server. Set `false` if you'd rather run a standalone relay. |
+| `HostVoiceRelay` | **`false`** | **Set to `true` to host voice on this server.** Off by default so no port is ever opened without you asking. Ignored completely on a normal client. |
 | `RelayPort` | `0` | `0` derives the port from the game port (+1000). **Leave it at 0** — a fixed port means every player has to set `ServerPort` by hand. |
 | `RelayName` | *(blank)* | Name players see when they connect. |
 | `AdminPassword` | *(blank)* | Lets a trusted player unlock voice kick/ban from their radio panel. Blank disables remote moderation. |
@@ -132,7 +134,7 @@ Example:
 
 ```ini
 [Server]
-HostVoiceRelay = true
+HostVoiceRelay = true      # <-- the one you must change
 RelayPort = 0
 RelayName = CritzOS #1
 AdminPassword = something-long-and-not-shared
@@ -393,8 +395,11 @@ port it connected to, and the peer count.
 
 ## Troubleshooting
 
-**Nothing from NORS in the server log.** BepInEx isn't loading. Check the doorstop install and
-that `BepInEx/plugins/NORS/` contains all three DLLs.
+**NORS loads but never mentions the relay.** `HostVoiceRelay` is still `false` — that's the
+default. The log tells you so on startup. Set it to `true` under `[Server]` and restart.
+
+**Nothing from NORS in the server log at all.** BepInEx isn't loading. Check the doorstop install
+and that `BepInEx/plugins/NORS/` contains all three DLLs.
 
 **"NORS could not start the voice relay: ... address already in use."** Something else has that
 port, or you started two servers on the same game port. Change one server's `-port`.

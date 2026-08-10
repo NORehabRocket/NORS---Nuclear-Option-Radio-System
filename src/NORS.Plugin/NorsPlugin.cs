@@ -37,8 +37,12 @@ namespace NORS.Plugin
                 }
                 else
                 {
-                    Log.LogInfo("NORS: dedicated server detected, but Server/HostVoiceRelay is off - " +
-                                "not hosting voice here.");
+                    // Say how to turn it on: an operator who installed the plugin on a server
+                    // clearly meant to host voice, and silence here looks like a broken install.
+                    Log.LogInfo(
+                        "NORS: dedicated server detected, but voice hosting is off. Set " +
+                        "Server/HostVoiceRelay = true in BepInEx/config/" + Guid + ".cfg to carry " +
+                        "your players' voice on this server (see SERVER-GUIDE.md).");
                 }
                 return;
             }

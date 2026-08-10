@@ -50,6 +50,10 @@ fans it out.
   players on another.
 - **Nothing extra to deploy** — same folder, same install, one UDP port.
 
+Voice hosting is **opt-in** — set `Server/HostVoiceRelay = true` on the server. Playing clients
+never open a voice port whatever their config says; the server path only runs with the game's
+`-DedicatedServer` flag.
+
 Operators: see **SERVER-GUIDE.md** in the download, including a Docker compose example.
 
 This also matters on busy servers. NORS sends uncompressed audio, roughly 280 kbit/s per

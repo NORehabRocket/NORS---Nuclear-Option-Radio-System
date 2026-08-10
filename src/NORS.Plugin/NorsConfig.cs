@@ -161,11 +161,12 @@ namespace NORS.Plugin
             AdminPassword = cfg.Bind("General", "AdminPassword", "",
                 "If the relay has remote admin enabled, set its admin password here to unlock in-game kick/ban from the radio panel.");
 
-            ServerHostRelay = cfg.Bind("Server", "HostVoiceRelay", true,
-                "DEDICATED SERVERS ONLY (ignored on a normal client). Run the NORS voice relay inside " +
-                "this game server, so players' voice is carried by the server they're already on. " +
-                "Nothing extra to deploy and nothing for players to configure - clients find it at this " +
-                "server's own address. Turn off if you run a standalone relay instead.");
+            ServerHostRelay = cfg.Bind("Server", "HostVoiceRelay", false,
+                "DEDICATED SERVERS ONLY - set this to true on your server to host voice. Ignored " +
+                "entirely on a normal client, which never opens a voice port no matter what this says. " +
+                "When enabled, the game server carries its own players' voice: nothing extra to deploy, " +
+                "and nothing for players to configure since clients find it at this server's own " +
+                "address. Off by default so a listening port is never opened without you asking.");
             ServerRelayPort = cfg.Bind("Server", "RelayPort", 0,
                 "UDP port for the in-process voice relay. 0 (recommended) derives it from this server's " +
                 "game port by adding 1000 - so 7777 becomes 8777, 7778 becomes 8778, and several servers " +

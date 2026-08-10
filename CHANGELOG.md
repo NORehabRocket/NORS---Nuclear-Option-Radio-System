@@ -31,6 +31,10 @@ uses direct Steam P2P if it doesn't. Nobody has to know which one their server s
 - `Transport = P2P` or `Relay` still force the old behaviour exactly.
 
 ### 🔗 Shared bans between servers on one machine or network
+Voice hosting is **opt-in**: set `Server/HostVoiceRelay = true` on a dedicated server to enable
+it. Clients never open a voice port regardless — the whole server path is gated on the game's
+`-DedicatedServer` launch flag.
+
 Point several servers at one ban file (`Server/SharedBanFile`) and a voice ban on any of them
 applies to all of them within ~3 seconds — no central service, nothing to authenticate, nothing
 extra to expose. In Docker it's one bind mount shared between containers.
