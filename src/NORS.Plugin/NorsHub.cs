@@ -279,6 +279,9 @@ namespace NORS.Plugin
             if (!_p2p.Ready) { _capture.SetActive(false); return; }
 
             _p2p.SetPeers(_local.Peers);
+            // Keep a live Steam session with each peer. Voice uses the no-delay send, which won't
+            // open one and drops the frame if none exists, so a lapsed session = silently one-way mute.
+            _p2p.MaintainSessions(Time.unscaledTime);
 
             // No addressable peers: say so plainly rather than transmitting into the void.
             if (_local.PeersUnavailable)
@@ -724,6 +727,7 @@ namespace NORS.Plugin
             _ui.MyStableFactionId = _local.StableFactionId;
             _ui.UdpTransport = _local.UdpTransport;
             _ui.PeerCount = _local.Peers.Count;
+            _ui.P2PSessions = _p2p.ActiveSessions;
             _ui.OtherPlayers = _local.OtherPlayerCount;
 
             if (p2p)

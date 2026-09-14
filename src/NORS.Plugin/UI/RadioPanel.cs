@@ -58,8 +58,10 @@ namespace NORS.Plugin.UI
         public int MyStableFactionId;
         public bool UdpTransport;
         public int PeerCount;
+        public int P2PSessions;      // live Steam P2P sessions (diag): < PeerCount means dropped voice
         public int OtherPlayers;
         private bool _showDiag;
+        private bool _showMic;
         public ulong MySteamId;
         public Action<ulong> OnHostBan;
         public Action<ulong> OnHostUnban;
@@ -146,7 +148,10 @@ namespace NORS.Plugin.UI
             GUILayout.BeginHorizontal();
             GUILayout.Label(Transmitting ? "<color=#ff5050>● TX</color>" : "○ RX", rich, GUILayout.Width(46));
             GUILayout.Label(Bar(MicLevel, 22));
+            if (GUILayout.Button(_showMic ? "Mic ▴" : "Mic ▾", GUILayout.Width(58))) _showMic = !_showMic;
             GUILayout.EndHorizontal();
+
+            DrawMicSection(rich);
 
             // Steam P2P with no addressable peers: the mic works and TX lights up, but the
             // audio has nowhere to go. This is a server-type limitation, not a user error.
@@ -350,7 +355,11 @@ namespace NORS.Plugin.UI
                     $"{(UdpTransport ? "UDP socket" : "steam socket")} · {faction} · " +
                     $"steam {(MySteamId != 0 ? MySteamId.ToString() : "—")}</color>", rich);
                 GUILayout.Label(
-                    $"<color=#999999>peers {PeerCount}/{OtherPlayers} · secure-by-default " +
+                    $"<color=#999999>peers {PeerCount}/{OtherPlayers}" +
+                    // Live Steam sessions vs peers: if this reads e.g. 1/3 while transmitting, voice is
+                    // being dropped into unopened sessions — the "they can't hear me any more" case.
+                    (P2PMode ? $" · sessions {P2PSessions}/{PeerCount}" : "") +
+                    $" · secure-by-default " +
                     $"{(NorsConfig.FactionSecureByDefault.Value ? "on" : "off")} · v{NorsPlugin.Version}</color>", rich);
             }
 
@@ -360,6 +369,56 @@ namespace NORS.Plugin.UI
 
             GUI.enabled = true;
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
+        }
+
+        /// <summary>
+        /// Microphone picker. MicDevice's own help text said "press the panel key to see available
+        /// devices", but nothing here ever listed them — so anyone whose default capture device was
+        /// the wrong one (a USB interface, typically) had no way to learn the exact string to type.
+        /// Devices are one-click buttons instead, and "no devices at all" is called out loudly.
+        /// </summary>
+        private void DrawMicSection(GUIStyle rich)
+        {
+            var devices = Microphone.devices;
+            var wrap = new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true };
+
+            // No recording device at all is a hard failure — always show it, never behind the toggle.
+            if (devices == null || devices.Length == 0)
+            {
+                GUILayout.Label(
+                    $"<color={Theme.Hex(Theme.Red)}>⚠ NO MICROPHONE DETECTED</color>\n" +
+                    $"<color={Theme.Hex(Theme.Txt)}>The game cannot see any recording device. Turn on " +
+                    "<b>Settings &gt; Privacy &amp; security &gt; Microphone &gt; 'Let desktop apps access " +
+                    "your microphone'</b> in Windows, then restart the game.</color>", wrap);
+                GUILayout.Space(4);
+                return;
+            }
+
+            if (!_showMic) return;
+
+            string want = NorsConfig.MicDevice.Value;
+            GUILayout.Label($"<color={Theme.Hex(Theme.Cyan)}>Microphone</color>", rich);
+
+            if (GUILayout.Button((string.IsNullOrEmpty(want) ? "● " : "○ ") + "System default"))
+                NorsConfig.MicDevice.Value = "";
+
+            for (int i = 0; i < devices.Length; i++)
+            {
+                bool active = !string.IsNullOrEmpty(want) &&
+                              devices[i].IndexOf(want, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (GUILayout.Button((active ? "● " : "○ ") + devices[i]))
+                    NorsConfig.MicDevice.Value = devices[i];
+            }
+
+            GUILayout.Label($"<color={Theme.Hex(Theme.Dim)}>Takes effect on your next transmission — hold " +
+                            "push-to-talk and watch the bar above to confirm it picks you up.</color>", wrap);
+
+            if (GUILayout.Button("Re-run first-time setup"))
+            {
+                NorsConfig.PttSetupDone.Value = false;
+                NorsPlugin.Log.LogInfo("NORS: first-time setup re-armed — it appears at the main menu.");
+            }
+            GUILayout.Space(4);
         }
 
         private void DrawRadio(int index, Radio r)

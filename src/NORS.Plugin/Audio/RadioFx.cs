@@ -24,10 +24,17 @@ namespace NORS.Plugin.Audio
             float qTarget = Mathf01(quality);
             float vTarget = Math.Max(0f, volume);
 
+            // How much of the radio "voice character" band-pass to apply. Players who struggle to make
+            // people out can dial this down (0 = clean, unprocessed voice) without losing the static
+            // cue, which is a separate control.
+            float filter = Mathf01(NorsConfig.FilterStrength.Value);
+
             // Makeup gain: the band-pass below sheds a lot of amplitude, so without a big boost the
             // voice ends up far quieter than the additive static (the #1 user complaint). Push it well
-            // above unity and let the limiter catch peaks (gives it radio "crunch").
-            float voiceGain = 2.8f + 0.7f * _q;                 // loud; thins only slightly when weak
+            // above unity and let the limiter catch peaks (gives it radio "crunch"). Dry voice needs
+            // none of that, so scale the makeup with the filter or turning it down blows the level out.
+            float wetGain = 2.8f + 0.7f * _q;                   // loud; thins only slightly when weak
+            float voiceGain = 1f + (wetGain - 1f) * filter;
             // Static stays clearly UNDER the voice. AM is noisier than FM (FM's main advantage).
             float noiseGain = (1f - _q) * staticLevel * (mod == Modulation.AM ? 0.45f : 0.22f);
 
@@ -51,10 +58,14 @@ namespace NORS.Plugin.Audio
                 _lpPrev += lpA * (hp - _lpPrev);
                 float band = _lpPrev;
 
+                // Blend filtered against the dry sample so the effect is continuously dialable.
+                // Filter state keeps running either way, so moving the slider never pops.
+                float shaped = x + (band - x) * filter;
+
                 // additive static (more when weak)
                 float noise = (float)(_rng.NextDouble() * 2.0 - 1.0) * noiseGain;
 
-                float outSample = (band * voiceGain + noise) * _vol;
+                float outSample = (shaped * voiceGain + noise) * _vol;
 
                 // Hard limit. The old soft-clip squashed anything over 1 down to ~0.5-0.6, which
                 // actually made loud voice quieter; clamping keeps it loud (and clips = radio crunch).

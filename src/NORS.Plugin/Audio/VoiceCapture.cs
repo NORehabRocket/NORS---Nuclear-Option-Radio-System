@@ -195,9 +195,28 @@ namespace NORS.Plugin.Audio
         {
             string cfg = NorsConfig.MicDevice.Value;
             if (string.IsNullOrEmpty(cfg)) return null; // default device
-            foreach (var d in Microphone.devices)
+
+            var devices = Microphone.devices;
+            foreach (var d in devices)
                 if (d == cfg) return d;
-            NorsPlugin.Log.LogWarning($"NORS: mic '{cfg}' not found, using default.");
+
+            // Windows reports interfaces under names nobody would type exactly — a Focusrite shows up
+            // as e.g. "Microphone (2- Focusrite USB Audio)". Accept any case-insensitive partial match
+            // so "focusrite" finds it, instead of silently falling back to the default device.
+            foreach (var d in devices)
+                if (d.IndexOf(cfg, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    cfg.IndexOf(d, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    NorsPlugin.Log.LogInfo($"NORS: mic '{cfg}' matched device '{d}'.");
+                    return d;
+                }
+
+            // Name what IS available — "not found, using default" alone gives nothing to act on.
+            NorsPlugin.Log.LogWarning($"NORS: mic '{cfg}' not found, using the system default instead. " +
+                                      (devices.Length == 0
+                                          ? "Windows is reporting NO recording devices to the game at all — check " +
+                                            "Settings > Privacy & security > Microphone > 'Let desktop apps access your microphone'."
+                                          : "Available devices: " + string.Join(" | ", devices)));
             return null;
         }
 

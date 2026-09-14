@@ -21,11 +21,21 @@ namespace NORS.Plugin.Net
         public string LastError { get; private set; } = "";
 
         private Callback<P2PSessionRequest_t> _sessionReq;
+        private Callback<P2PSessionConnectFail_t> _sessionFail;
         private readonly PacketWriter _w = new PacketWriter();
+        private readonly PacketWriter _wKeep = new PacketWriter();        // separate: never clobber a voice frame
         private readonly byte[] _rx = new byte[NorsProtocol.MaxDatagram];
         private readonly HashSet<ulong> _ignored = new HashSet<ulong>();   // host-muted/banned ids to drop
 
         private List<ulong> _peers = new List<ulong>();
+
+        /// <summary>Peers whose session Steam told us it could not open, with the reason.</summary>
+        private readonly Dictionary<ulong, string> _failed = new Dictionary<ulong, string>();
+        private float _nextKeepalive;
+
+        /// <summary>Peers we currently hold a live Steam session with (diagnostics).</summary>
+        public int ActiveSessions { get; private set; }
+        public int PeerCount => _peers.Count;
 
         public void Start()
         {
@@ -33,6 +43,7 @@ namespace NORS.Plugin.Net
             {
                 SelfId = SteamUser.GetSteamID().m_SteamID;
                 _sessionReq = Callback<P2PSessionRequest_t>.Create(OnSessionRequest);
+                _sessionFail = Callback<P2PSessionConnectFail_t>.Create(OnSessionFail);
                 SteamNetworking.AllowP2PPacketRelay(true);  // let Steam relay if a direct route fails
                 Ready = SelfId != 0;
                 if (!Ready) LastError = "Steam not available";
@@ -47,19 +58,88 @@ namespace NORS.Plugin.Net
         public void Stop()
         {
             try { _sessionReq?.Dispose(); } catch { }
+            try { _sessionFail?.Dispose(); } catch { }
             _sessionReq = null;
+            _sessionFail = null;
             Ready = false;
             _ignored.Clear();
+            _failed.Clear();
+            ActiveSessions = 0;
         }
 
         private void OnSessionRequest(P2PSessionRequest_t req)
         {
             // Accept voice sessions from anyone (we only ever read our own channel anyway).
             try { SteamNetworking.AcceptP2PSessionWithUser(req.m_steamIDRemote); } catch { }
+            _failed.Remove(req.m_steamIDRemote.m_SteamID);
+        }
+
+        /// <summary>
+        /// Steam could not open (or lost) a session with this peer. Without this the failure is
+        /// invisible: SendP2PPacket keeps "succeeding" into a dead session, so the talker's TX lights
+        /// up and nobody hears them — reported as people "talking to themselves".
+        /// </summary>
+        private void OnSessionFail(P2PSessionConnectFail_t f)
+        {
+            ulong id = f.m_steamIDRemote.m_SteamID;
+            string why = ((EP2PSessionError)f.m_eP2PSessionError).ToString();
+            _failed[id] = why;
+            LastError = $"P2P session failed with {id}: {why}";
+            NorsPlugin.Log.LogWarning($"NORS: {LastError}");
+        }
+
+        /// <summary>
+        /// Keeps a live Steam session with every peer.
+        ///
+        /// Voice goes out as <c>k_EP2PSendUnreliableNoDelay</c>, which is right for realtime audio but
+        /// has a sharp edge: it will NOT open a session, and silently discards the packet if one isn't
+        /// already established. Steam closes idle P2P sessions after a few minutes, so a player who
+        /// hadn't transmitted for a while would go permanently one-way mute to that peer — audible one
+        /// minute, inaudible the next, inconsistent between pairs in the same round.
+        ///
+        /// A periodic reliable 2-byte Ping re-opens anything that has lapsed (a reliable send DOES
+        /// initiate the session, which is what fires P2PSessionRequest_t on the far side). Peers
+        /// already ignore unknown packet types on this channel, so it needs no protocol change.
+        /// </summary>
+        public void MaintainSessions(float now)
+        {
+            if (!Ready || now < _nextKeepalive) return;
+            _nextKeepalive = now + 30f;    // well inside Steam's idle-session timeout
+
+            int active = 0;
+            Packets.WriteHeader(_wKeep, PacketType.Ping);
+            for (int i = 0; i < _peers.Count; i++)
+            {
+                ulong id = _peers[i];
+                if (id == 0 || id == SelfId) continue;
+                var who = new CSteamID(id);
+
+                bool live = false;
+                try
+                {
+                    live = SteamNetworking.GetP2PSessionState(who, out P2PSessionState_t st)
+                           && st.m_bConnectionActive != 0;
+                }
+                catch { }
+
+                if (live) { active++; _failed.Remove(id); continue; }
+
+                // Not connected (never opened, or idled out) — reliable send to establish it.
+                try { SteamNetworking.SendP2PPacket(who, _wKeep.Buffer, (uint)_wKeep.Length, EP2PSend.k_EP2PSendReliable, Channel); }
+                catch { }
+            }
+            ActiveSessions = active;
         }
 
         /// <summary>The Steam ids of the other players in the session (the hub passes its live list).</summary>
-        public void SetPeers(List<ulong> peers) { _peers = peers ?? new List<ulong>(); }
+        public void SetPeers(List<ulong> peers)
+        {
+            int before = _peers.Count;
+            _peers = peers ?? new List<ulong>();
+            // Somebody joined: open sessions now rather than waiting out the keepalive interval,
+            // so a new arrival isn't inaudible for up to 30 s.
+            if (_peers.Count != before) _nextKeepalive = 0f;
+        }
 
         /// <summary>Host-authority ignore set (muted/banned). Voice from these ids is dropped on receive.</summary>
         public void SetIgnored(IEnumerable<ulong> ids)

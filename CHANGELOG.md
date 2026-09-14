@@ -1,5 +1,69 @@
 # NORS — Changelog
 
+## v0.7.8
+
+**Four fixes, all reported on Discord.** Nothing here changes the protocol, so it mixes freely
+with 0.7.5+ clients and needs no server update.
+
+### 📡 Fixed: people going silently mute mid-round on P2P
+The one where someone is audible, then simply isn't any more — their TX lights up, they carry on
+talking, and from everyone else's side they're "talking to themselves". Inconsistent, different
+for different pairs of players, and it could happen inside a single round.
+
+Voice frames are sent with Steam's `UnreliableNoDelay` mode, which is the correct choice for
+realtime audio — but it has a sharp edge: it **will not open a P2P session, and silently discards
+the packet if one isn't already established**. Steam closes idle P2P sessions after a few minutes.
+So any pair of players who hadn't spoken to each other for a while lost their session, and every
+frame after that was dropped on the floor. The sender got no error — `SendP2PPacket` happily
+accepts packets into a dead session — which is exactly why it looked like the mic was fine.
+
+- NORS now **keeps a session alive with every peer**, re-opening any that lapse (a small reliable
+  ping every 30 s, well inside Steam's timeout). New arrivals get a session immediately instead of
+  waiting for the next cycle.
+- **Session failures are no longer silent**: Steam's `P2PSessionConnectFail` is handled and logged
+  with the reason, instead of being discarded.
+- The F7 `diag` view now shows **`sessions N/M`** — if that's below your peer count while you're
+  transmitting, voice is being dropped, and now you can see it.
+- Needs no protocol change and no server update; the keepalive is a packet type older clients
+  already ignore.
+- Reported by **Zookers**, with **Critzlez** and **Tarragon** testing.
+
+### 🎚️ You can now turn the radio effect down (or off)
+The tinny band-pass that gives comms their character also makes some voices genuinely hard to
+make out, and there was no way to reduce it — `StaticLevel` only controls the *noise*, not the
+filter, so pointing people at it didn't help.
+
+- New **`Audio/FilterStrength`**: `1` = the radio effect as it has always been, `0` = clean
+  unprocessed voice, anything between blends the two.
+- Makeup gain scales with it, so turning the filter down doesn't blow the volume out, and moving
+  it never pops.
+- Reported by **Fluospace**.
+
+### 🎤 The panel actually lists your microphones now
+`MicDevice`'s own help text said "press the panel key to see available devices" — but the panel
+never listed any, so if your default capture device was the wrong one there was no way to learn
+the exact name to type.
+
+- The F7 panel has a **Mic** section: every recording device as a one-click button, plus
+  "System default", with the active one marked.
+- **No recording devices at all** is now called out in red with the Windows privacy-setting fix,
+  instead of just looking like a dead mic.
+- `MicDevice` **matches partially and ignores case**, so `focusrite` finds
+  `Microphone (2- Focusrite USB Audio)`. When it still can't match, the log lists the devices that
+  *are* available rather than saying "not found".
+- Reported by **Drew Shape-Shifter**.
+
+### 🔁 The first-time setup popup can be brought back
+`PttSetupDone`'s help said "set to false to see the setup popup again", but the popup was *also*
+gated on having no push-to-talk key — so once a key was bound there was no way back to it, and
+reinstalling doesn't help because BepInEx keeps your config file.
+
+- `PttSetupDone` is now the only gate, so clearing it genuinely re-shows the popup.
+- There's a **"Re-run first-time setup"** button in the panel's Mic section, so you don't have to
+  edit a config file at all.
+- Upgrading still doesn't nag you: if you already have a key bound, setup is marked done once.
+- Reported by **KettleShot**.
+
 ## v0.7.7
 
 **First public build since 0.7.4.** 0.7.5 and 0.7.6 were developed but never released on their

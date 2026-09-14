@@ -13,11 +13,13 @@ namespace NORS.Plugin.UI
         private bool _positioned;
         private KeyCode _picked = KeyCode.None;   // nothing pre-selected: the player chooses
 
-        /// <summary>Show until answered, but only outside a mission (main menu).</summary>
+        /// <summary>Show until answered, but only outside a mission (main menu).
+        /// PttSetupDone is the only gate: upgraders are marked done once by the config migration,
+        /// so clearing it (by hand or from the panel button) genuinely brings the popup back —
+        /// it used to be gated on the key too, which made that documented reset a dead end.</summary>
         public bool ShouldShow(bool inGame)
         {
             if (NorsConfig.PttSetupDone.Value) return false;
-            if (NorsConfig.PttKey.Value != KeyCode.None) return false; // upgraders keep their key, no popup
             return !inGame;
         }
 

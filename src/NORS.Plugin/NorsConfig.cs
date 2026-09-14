@@ -53,6 +53,7 @@ namespace NORS.Plugin
         public static ConfigEntry<float> MicGain;
         public static ConfigEntry<float> ReceiveVolume;
         public static ConfigEntry<float> StaticLevel;
+        public static ConfigEntry<float> FilterStrength;
         public static ConfigEntry<bool> OpenAir3D;
         public static ConfigEntry<float> CullSeconds;
         public static ConfigEntry<bool> MicMonitor;
@@ -119,14 +120,19 @@ namespace NORS.Plugin
         /// auto-discovery ever running. Rewrite that one exact pair — and only that pair, so a
         /// genuinely configured relay is left alone — to the new automatic behaviour.
         /// </summary>
+        /// <summary>ConfigVersion as it was on disk this launch, so later one-time migrations
+        /// (which run after their settings are bound) can tell an upgrade from a normal load.</summary>
+        private static int _cfgVersionOnLoad;
+
         private static void MigrateLegacyDefaults(ConfigFile cfg)
         {
             var version = cfg.Bind("General", "ConfigVersion", 0,
                 "Internal: lets NORS update settings that changed meaning between versions. Don't edit.");
-            if (version.Value >= 1) return;
-            version.Value = 1;
+            _cfgVersionOnLoad = version.Value;
+            if (version.Value >= 2) return;
+            version.Value = 2;
 
-            if (ServerHost.Value == "127.0.0.1" && ServerPort.Value == 5555)
+            if (_cfgVersionOnLoad < 1 && ServerHost.Value == "127.0.0.1" && ServerPort.Value == 5555)
             {
                 ServerHost.Value = "auto";
                 ServerPort.Value = 0;
@@ -210,6 +216,13 @@ namespace NORS.Plugin
             PttSetupDone = cfg.Bind("Input", "PttSetupDone", false,
                 "Internal: the first-launch push-to-talk setup was completed. Set to false to see the setup popup again.");
 
+            // One-time on upgrade: someone who already has a key bound has effectively done setup,
+            // so don't nag them with the popup just because they updated. This runs ONCE (guarded by
+            // ConfigVersion), which is what makes "set PttSetupDone = false to see it again" work —
+            // previously the popup was also gated on the key, so once you had one there was no way
+            // back to the setup screen at all, reinstall or not.
+            if (_cfgVersionOnLoad < 2 && PttKey.Value != KeyCode.None) PttSetupDone.Value = true;
+
             // Rescue anyone stranded by the old unbound default: if they have no PTT key,
             // re-arm the setup popup no matter what they answered last time.
             if (PttKey.Value == KeyCode.None)
@@ -230,7 +243,13 @@ namespace NORS.Plugin
             ReceiveVolume = cfg.Bind("Audio", "ReceiveVolume", 1.6f,
                 new ConfigDescription("Master volume of incoming radio voice.", new AcceptableValueRange<float>(0f, 4f)));
             StaticLevel = cfg.Bind("Audio", "StaticLevel", 0.25f,
-                new ConfigDescription("How much radio static/noise is mixed in as signal quality drops.", new AcceptableValueRange<float>(0f, 1f)));
+                new ConfigDescription("How much radio static/noise is mixed in as signal quality drops. 0 = no static at all.", new AcceptableValueRange<float>(0f, 1f)));
+            FilterStrength = cfg.Bind("Audio", "FilterStrength", 1.0f,
+                new ConfigDescription(
+                    "How strongly the radio 'voice filter' (the band-pass that gives comms their tinny character) is applied. " +
+                    "1 = full radio effect, 0 = no filtering at all — clean, unprocessed voice, which is much easier to " +
+                    "understand if you struggle to make people out. Static is separate (see StaticLevel).",
+                    new AcceptableValueRange<float>(0f, 1f)));
             OpenAir3D = cfg.Bind("Audio", "OpenAir3D", false,
                 "If true, voice is positioned in 3D world space (you hear the jet's direction). If false, classic in-headset radio (recommended).");
             CullSeconds = cfg.Bind("Audio", "CullSeconds", 3f,
