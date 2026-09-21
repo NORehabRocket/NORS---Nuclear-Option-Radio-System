@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using NORS.Common;
+using NORS.Plugin.Audio;
 using NORS.Plugin.Comms;
 using UnityEngine;
 
@@ -22,6 +23,8 @@ namespace NORS.Plugin.UI
         public string FactionName = "";
         public float MicLevel;
         public List<string> Talkers;
+        /// <summary>Raw callsigns matching <see cref="Talkers"/> by index — the volume key.</summary>
+        public List<string> TalkerCallsigns;
 
         // Diagnostics.
         public int TxFrames;
@@ -66,6 +69,11 @@ namespace NORS.Plugin.UI
         public Action<ulong> OnHostBan;
         public Action<ulong> OnHostUnban;
         public Func<ulong, bool> IsBanned;
+
+        // Per-player listening volume. Local to this client — no moderator rights needed, and
+        // nothing is sent to the player being adjusted.
+        public Func<ulong, string, float> GetPlayerVolume;
+        public Action<ulong, string, float> SetPlayerVolume;
 
         public Action ToggleConnect;
         public Action<uint> OnVoteKick;
@@ -251,7 +259,21 @@ namespace NORS.Plugin.UI
             if (Talkers == null || Talkers.Count == 0)
                 GUILayout.Label("—");
             else
-                foreach (var t in Talkers) GUILayout.Label("▸ " + t);
+                for (int i = 0; i < Talkers.Count; i++)
+                {
+                    // Volume lives here as well as on the roster row, and this is the copy that
+                    // always works: it keys on the callsign the frame actually carried, so it
+                    // still finds someone who set General/CallsignOverride and therefore does not
+                    // match their name in the game roster.
+                    string raw = (TalkerCallsigns != null && i < TalkerCallsigns.Count) ? TalkerCallsigns[i] : null;
+                    if (string.IsNullOrEmpty(raw)) { GUILayout.Label("▸ " + Talkers[i]); continue; }
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("▸ " + Talkers[i]);
+                    GUILayout.FlexibleSpace();
+                    DrawVolumeControls(ResolveSteamId(raw), raw);
+                    GUILayout.EndHorizontal();
+                }
 
             // --- players / moderation ---
             GUILayout.Space(4);
@@ -269,6 +291,7 @@ namespace NORS.Plugin.UI
                     GUILayout.Label(me ? p.Name + " (you)" : (sameFaction ? p.Name : p.Name + " <color=#888888>[other]</color>"),
                         new GUIStyle(GUI.skin.label) { richText = true });
                     GUILayout.FlexibleSpace();
+                    if (!me) DrawPlayerVolume(p);
                     if (!me)
                     {
                         if (P2PMode)
@@ -433,6 +456,56 @@ namespace NORS.Plugin.UI
             if (_cryptoEditIndex == index) DrawCryptoEditor(r);
 
             GUILayout.EndVertical();
+        }
+
+        /// <summary>
+        /// Volume controls on a player's roster row: slider, a percentage that resets to 100% when
+        /// clicked, and a mute toggle. Local and instant — unlike Ban, it needs no moderator rights,
+        /// which is the point: anyone can turn down a player who runs hot without kicking them.
+        /// </summary>
+        private void DrawPlayerVolume(RosterEntry p) => DrawVolumeControls(p.SteamId, p.Name);
+
+        /// <summary>
+        /// Best-effort callsign -> Steam id. Storing against the Steam id is what lets a setting
+        /// survive the player renaming themselves; when we cannot resolve one (relay rosters report
+        /// 0, and an overridden callsign matches no roster row) the store falls back to the name,
+        /// which still gates the audio correctly.
+        /// </summary>
+        private ulong ResolveSteamId(string callsign)
+        {
+            if (Roster == null || string.IsNullOrEmpty(callsign)) return 0;
+            for (int i = 0; i < Roster.Count; i++)
+                if (Roster[i].SteamId != 0 && string.Equals(Roster[i].Name, callsign, StringComparison.OrdinalIgnoreCase))
+                    return Roster[i].SteamId;
+            return 0;
+        }
+
+        private void DrawVolumeControls(ulong steamId, string name)
+        {
+            if (GetPlayerVolume == null || SetPlayerVolume == null) return;
+
+            float cur = GetPlayerVolume(steamId, name);
+            bool muted = cur <= 0.001f;
+
+            float next = GUILayout.HorizontalSlider(cur, 0f, PlayerVolumes.MaxGain, GUILayout.Width(64));
+            if (Mathf.Abs(next - cur) > 0.001f)
+            {
+                SetPlayerVolume(steamId, name, next);
+                cur = next;
+                muted = cur <= 0.001f;
+            }
+
+            // The readout doubles as the reset control — otherwise dragging a slider back to
+            // exactly 1.00 by hand is fiddly and nobody would ever undo a tweak cleanly.
+            string pct = muted ? "<color=#ff5050>MUTE</color>"
+                       : Mathf.Abs(cur - 1f) < 0.001f ? "<color=#999999>100%</color>"
+                       : $"<color=#ffd24a>{cur * 100f:0}%</color>";
+            if (GUILayout.Button(pct, new GUIStyle(GUI.skin.label) { richText = true, alignment = TextAnchor.MiddleRight },
+                    GUILayout.Width(40)))
+                SetPlayerVolume(steamId, name, 1f);
+
+            if (GUILayout.Button(muted ? "UNMUTE" : "MUTE", GUILayout.Width(58)))
+                SetPlayerVolume(steamId, name, muted ? 1f : 0f);
         }
 
         /// <summary>One line per radio: TX · label · freq · mode · tune · RX · SEC · lock · volume.</summary>

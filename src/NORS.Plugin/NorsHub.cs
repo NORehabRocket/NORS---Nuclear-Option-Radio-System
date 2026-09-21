@@ -29,6 +29,8 @@ namespace NORS.Plugin
         private readonly VoiceCapture _capture = new VoiceCapture();
         private readonly VoicePlayback _playback = new VoicePlayback();
         private HostBanStore _hostBans;
+        private PlayerVolumes _playerVols;
+        private float _nextVolRosterSync;
         private readonly ModerationAuthority _moderation = new ModerationAuthority();
         private int _appliedModRevision = -1;
         private bool _appliedAsModerator;
@@ -51,6 +53,7 @@ namespace NORS.Plugin
         private int _loggedFaction = int.MinValue;
         private readonly int[] _rxBuf = new int[NorsProtocol.MaxRxFrequencies];
         private readonly List<string> _talkerNames = new List<string>();
+        private readonly List<string> _talkerCallsigns = new List<string>();
         private readonly List<RosterEntry> _roster = new List<RosterEntry>();
         private readonly List<string> _notices = new List<string>();
 
@@ -75,6 +78,7 @@ namespace NORS.Plugin
             _capture.OnFrame = OnEncodedFrame;
             _userWantsConnection = NorsConfig.AutoConnect.Value;
             _hostBans = new HostBanStore(Path.Combine(Paths.ConfigPath, "nors-host-bans.txt"));
+            _playerVols = new PlayerVolumes(Path.Combine(Paths.ConfigPath, "nors-player-volumes.txt"));
 
             _ui = new RadioPanel(_radios)
             {
@@ -87,6 +91,8 @@ namespace NORS.Plugin
                 OnHostBan = sid => { if (_hostBans.Add(sid)) { _appliedModRevision = -1; BroadcastBansNow(); } },
                 OnHostUnban = sid => { if (_hostBans.Remove(sid)) { _appliedModRevision = -1; BroadcastBansNow(); } },
                 IsBanned = sid => _hostBans.Contains(sid),
+                GetPlayerVolume = (sid, name) => _playerVols.GetFor(sid, name),
+                SetPlayerVolume = (sid, name, g) => _playerVols.Set(sid, name, g),
                 MyClientId = _clientId,
             };
             NorsApi.Hub = this;
@@ -646,7 +652,10 @@ namespace NORS.Plugin
                 }
             }
 
-            _playback.OnFrame(v, p, r.Volume, v.Callsign, NorsConfig.OpenAir3D.Value);
+            // Per-listener volume for this talker, on top of the radio's own knob. Applied here
+            // rather than inside the FX chain so it scales the finished signal — voice and its
+            // static together — instead of leaving a loud hiss behind a quietened voice.
+            _playback.OnFrame(v, p, r.Volume * _playerVols.Get(v.Callsign), v.Callsign, NorsConfig.OpenAir3D.Value);
             _rxFrames++;
         }
 
@@ -684,6 +693,7 @@ namespace NORS.Plugin
         private void UpdateUiState()
         {
             _playback.GetActive(_talkerNames);
+            _playback.GetActiveCallsigns(_talkerCallsigns);
             bool p2p = P2P;
             _ui.P2PMode = p2p;
             _ui.MicLevel = _capture.LastLevel;
@@ -692,6 +702,7 @@ namespace NORS.Plugin
             _ui.Callsign = _local.Callsign;
             _ui.FactionName = _local.Faction != null ? _local.Faction.factionName : "(none)";
             _ui.Talkers = _talkerNames;
+            _ui.TalkerCallsigns = _talkerCallsigns;
             _ui.Notices = _notices;
             _ui.MyFactionId = _local.FactionId;
             _ui.MySteamId = _local.SteamId;
@@ -751,6 +762,16 @@ namespace NORS.Plugin
                 _ui.Roster = _client.Connected ? _roster : EmptyRoster;
                 _ui.AdminAuthed = _client.AdminAuthed;
                 _ui.AdminPassword = NorsConfig.AdminPassword.Value;
+            }
+
+            // Reconcile saved volumes against who is actually here, so a player who changed their
+            // Steam name keeps the level you set for them. The game roster is the one that carries
+            // Steam ids (the relay roster reports 0), so prefer it whichever transport we are on.
+            if (Time.unscaledTime >= _nextVolRosterSync)
+            {
+                _nextVolRosterSync = Time.unscaledTime + 5f;
+                var idRoster = _local.SessionRoster.Count > 0 ? _local.SessionRoster : _ui.Roster;
+                _playerVols.SyncRoster(idRoster);
             }
         }
 

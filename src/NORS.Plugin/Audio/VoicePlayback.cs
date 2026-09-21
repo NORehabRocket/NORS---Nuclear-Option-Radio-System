@@ -40,6 +40,22 @@ namespace NORS.Plugin.Audio
 
         public void Init(Transform root) => _root = root;
 
+        /// <summary>
+        /// The raw callsigns of currently-receiving talkers, unformatted. Separate from
+        /// <see cref="GetActive"/> because that one bakes quality and range into the string for
+        /// display; this is the identity the per-player volume store keys on, and it is the
+        /// callsign actually carried in the voice frame — which is not always the roster name,
+        /// since a sender can set General/CallsignOverride.
+        /// </summary>
+        public void GetActiveCallsigns(List<string> outNames)
+        {
+            outNames.Clear();
+            float now = Time.unscaledTime;
+            foreach (var t in _talkers.Values)
+                if (now - t.LastActive < 0.5f && !string.IsNullOrEmpty(t.Name))
+                    outNames.Add(t.Name);
+        }
+
         /// <summary>Number of currently-receiving talkers, and writes their callsigns into the list.</summary>
         public void GetActive(List<string> outNames)
         {
