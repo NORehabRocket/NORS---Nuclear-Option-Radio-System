@@ -1,5 +1,37 @@
 # NORS — Changelog
 
+## v0.7.9
+
+**Two additions, both asked for on Discord.** Nothing here changes the protocol, so it mixes freely
+with 0.7.5+ clients and needs no server update.
+
+### 🔊 Per-player volume, remembered between sessions
+One player who runs hot has been a moderation problem rather than an audio one — the only lever was
+the host's mute/ban, so the answer was "threaten them with a kick". Now every listener can simply
+turn them down.
+
+Each player gets a slider (0 to 1.5x, so you can boost someone quiet as well as crush someone loud),
+a percentage you click to snap back to 100%, and a mute toggle. It is entirely local: nothing is
+transmitted, nobody is told, and no moderator rights are involved.
+
+- Controls appear in **two places**: on the **Receiving** rows, for turning down whoever is blasting
+  you right now, and on the **Players** roster rows next to Ban.
+- **It sticks.** Settings live in `BepInEx/config/nors-player-volumes.txt` and survive restarts,
+  servers and sessions.
+- **It survives a rename.** Settings are keyed to the Steam id where one is known, so somebody
+  changing their Steam name keeps the level you set them to rather than quietly reverting to full
+  volume.
+- Turning someone back to 100% removes their entry rather than storing it, so the file stays a short
+  list of decisions instead of growing a row for everyone you have ever flown with.
+- Requested by **Zookers**.
+
+### 🟢 NORS mark and version on the main menu
+A small NORS badge sits in a corner of the main menu with the version beside it.
+
+Mostly this is so a stale install is visible **before** you fly rather than after something
+misbehaves — "which version are you on?" becomes a glance instead of a conversation. Menu only; it
+never appears in flight. Turn it off with `UI/MenuBadge`, move it with `UI/MenuBadgeCorner`.
+
 ## v0.7.8
 
 **Four fixes, all reported on Discord.** Nothing here changes the protocol, so it mixes freely
