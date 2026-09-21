@@ -20,6 +20,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Baked into the DLL rather than shipped loose, so the badge cannot go missing from an
+         install and there is no path to resolve at runtime. -->
+    <EmbeddedResource Include="Resources\nors-badge.png" />
     <ProjectReference Include="..\NORS.Common\NORS.Common.csproj" />
   </ItemGroup>
 
@@ -80,6 +83,11 @@
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(ManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Texture2D.LoadImage, for the embedded menu badge. -->
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(ManagedDir)\UnityEngine.ImageConversionModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.AudioModule">

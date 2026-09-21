@@ -39,6 +39,8 @@ namespace NORS.Plugin
 
         // ---- UI ----
         public static ConfigEntry<bool> CompactRadios;
+        public static ConfigEntry<bool> MenuBadge;
+        public static ConfigEntry<MfdCorner> MenuBadgeCorner;
 
         // ---- Input ----
         public static ConfigEntry<bool> PttSetupDone;
@@ -205,6 +207,13 @@ namespace NORS.Plugin
             CompactRadios = cfg.Bind("UI", "CompactRadios", true,
                 "Radio panel layout: one compact line per radio (recommended with 6 radios). " +
                 "Turn off for the taller two-row layout with a larger volume slider.");
+
+            MenuBadge = cfg.Bind("UI", "MenuBadge", true,
+                "Show the NORS mark and version in a corner of the main menu. Mostly so a stale install " +
+                "is visible before you fly rather than after something misbehaves. Menu only — never in flight.");
+
+            MenuBadgeCorner = cfg.Bind("UI", "MenuBadgeCorner", MfdCorner.BottomRight,
+                "Which corner of the main menu the NORS mark sits in.");
 
             // Deliberately UNBOUND out of the box. There is no key we can pick for someone:
             // T fights the game's chat, and Caps Lock toggles caps every time you transmit, so

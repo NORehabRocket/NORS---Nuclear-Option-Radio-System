@@ -36,6 +36,7 @@ namespace NORS.Plugin
         private bool _appliedAsModerator;
         private RadioPanel _ui;
         private readonly FirstRunSetup _firstRun = new FirstRunSetup();
+        private readonly MenuBadge _badge = new MenuBadge();
         private readonly MfdOverlay _mfd = new MfdOverlay();
         private readonly MfdBezelPage _mfdPage = new MfdBezelPage();
 
@@ -243,6 +244,7 @@ namespace NORS.Plugin
         private void OnGUI()
         {
             if (!NorsConfig.MasterEnabled.Value || _ui == null) return;
+            Guard(() => _badge.Render(_local.InGame), "MenuBadge");
             if (_firstRun.ShouldShow(_local.InGame)) Guard(() => _firstRun.Render(), "FirstRun");
             Guard(() => _ui.Render(), "UI");
         }
