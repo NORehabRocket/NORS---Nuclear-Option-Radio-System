@@ -16,7 +16,7 @@ namespace NORS.Plugin
         internal static ManualLogSource Log;
 
         private GameObject _hub;
-        private ServerHost _serverHost;
+        private static ServerHost _serverHost;
 
         private void Awake()
         {
@@ -32,8 +32,12 @@ namespace NORS.Plugin
             {
                 if (NorsConfig.ServerHostRelay.Value)
                 {
-                    _serverHost = new ServerHost();
-                    _serverHost.Start();
+                    if (_serverHost == null)
+                    {
+                        _serverHost = new ServerHost();
+                        _serverHost.Start();
+                        Application.quitting += StopDedicatedRelay;
+                    }
                 }
                 else
                 {
@@ -57,7 +61,16 @@ namespace NORS.Plugin
 
         private void OnDestroy()
         {
+            // Dedicated scene loading destroys the bootstrap component, not the server.
+            if (ServerMode.IsDedicatedServer) return;
+            StopDedicatedRelay();
+        }
+
+        private static void StopDedicatedRelay()
+        {
+            Application.quitting -= StopDedicatedRelay;
             _serverHost?.Stop();
+            _serverHost = null;
         }
     }
 

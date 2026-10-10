@@ -306,9 +306,9 @@ namespace NORS.Plugin.UI
                         }
                         else
                         {
-                            // Relay: faction vote-kick + (admin/host) kick/ban by client id.
+                            // Relay: faction vote-kick + authenticated admin kick/ban by client id.
                             if (sameFaction && GUILayout.Button("Vote", GUILayout.Width(50))) OnVoteKick?.Invoke(p.ClientId);
-                            if (AdminAuthed || LocalIsHost)
+                            if (AdminAuthed)
                             {
                                 if (GUILayout.Button("Kick", GUILayout.Width(50))) OnAdminKick?.Invoke(p.ClientId);
                                 if (GUILayout.Button("Ban", GUILayout.Width(46))) OnAdminBan?.Invoke(p.ClientId);
@@ -336,10 +336,6 @@ namespace NORS.Plugin.UI
             else if (AdminAuthed)
             {
                 GUILayout.Label("<color=#7CFC7C>Master admin</color>", rich);
-            }
-            else if (LocalIsHost)
-            {
-                GUILayout.Label("<color=#7CFC7C>You host this server — Kick/Ban moderate your players</color>", rich);
             }
             else
             {

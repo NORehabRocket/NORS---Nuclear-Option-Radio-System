@@ -48,7 +48,7 @@ namespace NORS.Plugin
         private bool _relayHostUnknown;
         private string _resolvedRelayHost = "";
 
-        private float _lastHello, _lastState, _lastPing, _lastBanBroadcast;
+        private float _lastState, _lastPing, _lastBanBroadcast;
         private readonly List<ulong> _banScratch = new List<ulong>();
         private int _txFrames, _rxFrames;
         private int _loggedFaction = int.MinValue;
@@ -401,14 +401,10 @@ namespace NORS.Plugin
 
             float now = Time.unscaledTime;
 
-            // Retry Hello until acknowledged.
+            // Refresh Hello after relay restarts/timeouts without admitting sessions through State.
+            _client.MaintainSession(now, _local.SteamId, _local.RoomId, _local.IsHost, _local.FactionId, _local.Callsign);
             if (!_client.Connected)
             {
-                if (now - _lastHello >= NorsProtocol.HelloRetryInterval)
-                {
-                    _lastHello = now;
-                    _client.SendHello(_local.SteamId, _local.RoomId, _local.IsHost, _local.FactionId, _local.Callsign);
-                }
                 _capture.SetActive(false);
                 return;
             }
@@ -476,7 +472,6 @@ namespace NORS.Plugin
             int port = ResolveRelayPort();
             _client.Start(host, port, _clientId);
             _socketUp = true;
-            _lastHello = 0f;
             NorsPlugin.Log.LogInfo($"NORS connecting to {host}:{port}" +
                                    (host == _local.ServerAddress ? " (this game server)" : "") + "...");
         }

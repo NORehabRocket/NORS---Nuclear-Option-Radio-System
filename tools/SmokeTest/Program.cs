@@ -7,7 +7,7 @@ using NORS.Common;
 using NORS.Server.Core;
 
 // In-process end-to-end check of the multi-room relay:
-// routing, ROOM ISOLATION, vote-kick (room+faction), room-host moderation, room-scoped bans,
+// routing, ROOM ISOLATION, vote-kick (room+faction), untrusted host denial, room-scoped bans,
 // cross-room admin denial, and master (password) admin.
 
 int port = 5603;
@@ -72,23 +72,32 @@ Thread.Sleep(100);
 // Connected now: A, B, E, D (C was vote-kicked earlier).
 Check("cross-faction target not kicked", server.ClientCount == 4, $"(={server.ClientCount})");
 
-// ---- room-host moderation: A (host R1) kicks D (R1) with NO password ----
+// ---- a self-reported host is NOT an operator, even in its own room ----
 Packets.WriteAdminCommand(w, AId, AdminOp.Kick, DId, "host kick"); A.Send(w.Buffer, w.Length);
-Check("host kicks own-room player", RecvOf(D, PacketType.Kicked) != null);
 var hostKickRes = RecvOf(A, PacketType.AdminResult);
-Check("host kick authorized", hostKickRes != null && AdminOk(hostKickRes));
+Check("untrusted host kick denied", hostKickRes != null && !AdminOk(hostKickRes));
+Check("own-room target receives no kick", RecvOf(D, PacketType.Kicked) == null);
+Check("denied host kick retains membership", server.ClientCount == 4 && server.GetClients().Exists(c => c.Id == DId), $"(={server.ClientCount})");
 
 // ---- host CANNOT moderate another server: A (R1) tries to kick E (R2) ----
 Packets.WriteAdminCommand(w, AId, AdminOp.Kick, EId, "nope"); A.Send(w.Buffer, w.Length);
 var crossRoom = RecvOf(A, PacketType.AdminResult);
 Check("host cannot kick other server's player", crossRoom != null && !AdminOk(crossRoom));
 Thread.Sleep(100);
-// Connected now: A, B, E (D was host-kicked just above); E unaffected by the denied cross-room kick.
-Check("other server's player still connected", server.ClientCount == 3, $"(={server.ClientCount})");
+// Connected now: A, B, E, D; both denied kicks leave membership intact.
+Check("other server's player still connected", server.ClientCount == 4 && server.GetClients().Exists(c => c.Id == EId), $"(={server.ClientCount})");
 
-// ---- room-scoped ban: A bans B from R1; B blocked in R1 but allowed in R2 ----
+// ---- an untrusted host cannot ban; only the trusted operator API sets a room ban ----
 Packets.WriteAdminCommand(w, AId, AdminOp.Ban, BId, "cheating"); A.Send(w.Buffer, w.Length);
-Check("host bans own-room player", RecvOf(B, PacketType.Kicked) != null);
+var hostBanRes = RecvOf(A, PacketType.AdminResult);
+Check("untrusted host ban denied", hostBanRes != null && !AdminOk(hostBanRes));
+Check("denied host ban sends no kick", RecvOf(B, PacketType.Kicked) == null);
+Check("denied host ban retains membership", server.ClientCount == 4 && server.GetClients().Exists(c => c.Id == BId), $"(={server.ClientCount})");
+Check("denied host ban creates no ban", server.Bans.Count == 0);
+
+// ---- trusted room-scoped ban: B blocked in R1 but allowed in R2 ----
+Check("operator API applies room-scoped ban", server.Ban(BId, "room ban", R1));
+Check("operator ban removes own-room player", RecvOf(B, PacketType.Kicked) != null);
 Hello(B, BId, BS, R1, false, F7, "Hornet");
 Check("banned player blocked rejoining that room", RecvOf(B, PacketType.Reject) != null);
 Hello(B, BId, BS, R2, false, F7, "Hornet");

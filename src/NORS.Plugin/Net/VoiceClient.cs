@@ -39,11 +39,13 @@ namespace NORS.Plugin.Net
         private readonly ConcurrentQueue<VoiceHeader> _voiceIn = new ConcurrentQueue<VoiceHeader>();
         private readonly PacketWriter _w = new PacketWriter();
         private readonly object _sendLock = new object();
+        private double _lastHello = double.NegativeInfinity;
 
         public void Start(string host, int port, uint clientId)
         {
             Stop();
             ClientId = clientId;
+            _lastHello = double.NegativeInfinity;
             Connected = false;
             LastError = "";
             Kicked = false;
@@ -182,6 +184,14 @@ namespace NORS.Plugin.Net
         public bool TryDequeueVoice(out VoiceHeader v) => _voiceIn.TryDequeue(out v);
 
         // -------- sends (main thread) --------
+
+        public void MaintainSession(double now, ulong steamId, ulong roomId, bool isHost, int factionId, string name)
+        {
+            // Refresh even while connected: the relay may have restarted or expired our session.
+            if (Kicked || now - _lastHello < NorsProtocol.HelloRetryInterval) return;
+            _lastHello = now;
+            SendHello(steamId, roomId, isHost, factionId, name);
+        }
 
         public void SendHello(ulong steamId, ulong roomId, bool isHost, int factionId, string name)
         {

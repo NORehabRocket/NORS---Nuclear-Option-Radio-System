@@ -84,7 +84,7 @@ namespace NORS.Plugin.Server
                 if (string.IsNullOrEmpty(adminPassword))
                     NorsPlugin.Log.LogInfo(
                         "NORS: no Server/AdminPassword set, so remote voice moderation is off. " +
-                        "Set one (and add moderator Steam ids to Moderation/Moderators) to enable it.");
+                        "Set one to enable relay admin login. Moderation/Moderators applies only to P2P.");
             }
             catch (Exception e)
             {

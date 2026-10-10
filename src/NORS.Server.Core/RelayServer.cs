@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using NORS.Common;
 
@@ -34,6 +35,61 @@ namespace NORS.Server.Core
 
         private const double VoteWindowSeconds = 45.0;
         private const double RosterInterval = 2.0;
+        // A full roster remains below MaxDatagram with 32 UTF-8 bytes per name.
+        public const int MaxClients = 32;
+        private const int MaxTrackedEndpoints = 256;
+        private readonly Dictionary<IPEndPoint, RateBucket> _rates = new Dictionary<IPEndPoint, RateBucket>();
+        private readonly RateBucket _globalRate = new RateBucket(8000);
+        private readonly RateBucket _egressRate = new RateBucket(16 * 1024 * 1024);
+
+        private sealed class RateBucket
+        {
+            public double Tokens, Last;
+            public RateBucket(double capacity) { Tokens = capacity; }
+            public bool Take(double now, double rate, double capacity, double cost = 1)
+            {
+                Tokens = Math.Min(capacity, Tokens + Math.Max(0, now - Last) * rate);
+                Last = now;
+                if (Tokens < cost) return false;
+                Tokens -= cost;
+                return true;
+            }
+        }
+
+        private bool AdmitPacket(IPEndPoint from)
+        {
+            double now = Now;
+            if (!_globalRate.Take(now, 4000, 8000)) return false;
+            if (!_rates.TryGetValue(from, out var rate))
+            {
+                if (_rates.Count >= MaxTrackedEndpoints) return false;
+                rate = new RateBucket(200) { Last = now };
+                _rates[new IPEndPoint(from.Address, from.Port)] = rate;
+            }
+            return rate.Take(now, 100, 200);
+        }
+
+        private bool Owns(uint id, IPEndPoint from, out ClientSession session)
+        {
+            return _byId.TryGetValue(id, out session) && session.EndPoint.Equals(from);
+        }
+
+        private static void RequireEnd(ref PacketReader r)
+        {
+            if (!r.End) throw new FormatException("Unexpected packet suffix.");
+        }
+
+        private static string RosterName(string name)
+        {
+            // Limit bytes, not UTF-16 characters, without cutting a surrogate pair.
+            while (Encoding.UTF8.GetByteCount(name) > NorsProtocol.MaxPlayerNameLen)
+            {
+                int n = name.Length - 1;
+                if (n > 0 && char.IsLowSurrogate(name[n]) && char.IsHighSurrogate(name[n - 1])) n--;
+                name = name.Substring(0, n);
+            }
+            return name;
+        }
 
         /// <summary>Human-readable log lines (joins/leaves/kicks). Raised from the network thread.</summary>
         public event Action<string> Log;
@@ -46,6 +102,19 @@ namespace NORS.Server.Core
         }
 
         private readonly Dictionary<uint, VoteState> _votes = new Dictionary<uint, VoteState>();
+
+        // Called with _lock held; votes belong to a session's current identity/membership.
+        private void InvalidateVotes(uint id)
+        {
+            _votes.Remove(id);
+            foreach (var vote in _votes.Values) vote.Voters.Remove(id);
+        }
+
+        private void RemoveSession(uint id)
+        {
+            _byId.Remove(id);
+            InvalidateVotes(id);
+        }
         private readonly string _adminPassword;
 
         private readonly Socket _socket;
@@ -113,7 +182,6 @@ namespace NORS.Server.Core
                     if (!_socket.Poll(200_000, SelectMode.SelectRead))
                     {
                         if (Now >= nextSweep) { Sweep(); nextSweep = Now + 1.0; }
-                if (Now >= nextBanSync) { SyncBans(); nextBanSync = Now + BanSyncInterval; }
                         if (Now >= nextRoster) { BroadcastRoster(); nextRoster = Now + RosterInterval; }
                         if (Now >= nextBanSync) { SyncBans(); nextBanSync = Now + BanSyncInterval; }
                         continue;
@@ -127,10 +195,18 @@ namespace NORS.Server.Core
 
                 if (Now >= nextSweep) { Sweep(); nextSweep = Now + 1.0; }
                 if (Now >= nextRoster) { BroadcastRoster(); nextRoster = Now + RosterInterval; }
+                if (Now >= nextBanSync) { SyncBans(); nextBanSync = Now + BanSyncInterval; }
             }
         }
 
         private void Handle(byte[] buffer, int len, IPEndPoint from)
+        {
+            if (len < 2 || len > NorsProtocol.MaxDatagram || !AdmitPacket(from)) return;
+            try { HandlePacket(buffer, len, from); }
+            catch (FormatException) { /* Invalid datagrams must not mutate sessions or stop the loop. */ }
+        }
+
+        private void HandlePacket(byte[] buffer, int len, IPEndPoint from)
         {
             var r = new PacketReader(buffer, 0, len);
             byte version = r.Byte();
@@ -146,10 +222,10 @@ namespace NORS.Server.Core
             {
                 case PacketType.Hello: OnHello(ref r, from); break;
                 case PacketType.State: OnState(ref r, from); break;
-                case PacketType.Voice: OnVoice(buffer, len, ref r); break;
+                case PacketType.Voice: OnVoice(buffer, len, ref r, from); break;
                 case PacketType.Ping: OnPing(ref r, from); break;
-                case PacketType.Bye: OnBye(ref r); break;
-                case PacketType.VoteKick: OnVoteKick(ref r); break;
+                case PacketType.Bye: OnBye(ref r, from); break;
+                case PacketType.VoteKick: OnVoteKick(ref r, from); break;
                 case PacketType.AdminAuth: OnAdminAuth(ref r, from); break;
                 case PacketType.AdminCommand: OnAdminCommand(ref r, from); break;
             }
@@ -158,11 +234,18 @@ namespace NORS.Server.Core
         private void OnHello(ref PacketReader r, IPEndPoint from)
         {
             Packets.ReadHello(ref r, out uint id, out ulong steamId, out ulong roomId, out bool isHost, out int factionId, out string name);
+            RequireEnd(ref r);
+            name = RosterName(name);
+            bool adminRevoked = false;
+
+            lock (_lock)
+            {
+                if (_byId.TryGetValue(id, out var existing) && !existing.EndPoint.Equals(from)) return;
+            }
 
             if (Bans.IsBanned(steamId, from.Address.ToString(), roomId, out string banReason))
             {
                 SendAdmin(from, w => Packets.WriteReject(w, "Banned" + (string.IsNullOrEmpty(banReason) ? "" : ": " + banReason)));
-                lock (_lock) { if (_byId.ContainsKey(id)) _byId.Remove(id); }
                 return;
             }
 
@@ -170,19 +253,30 @@ namespace NORS.Server.Core
             {
                 if (!_byId.TryGetValue(id, out var s))
                 {
+                    if (_byId.Count >= MaxClients) return;
+                    foreach (var other in _byId.Values)
+                        if (other.EndPoint.Equals(from)) return;
                     s = new ClientSession { Id = id };
                     _byId[id] = s;
                     Emit($"+ {name} joined ({from}) room {roomId}. Clients: {_byId.Count}");
                 }
-                s.EndPoint = from;
+                if (s.SteamId != steamId || s.Room != roomId || s.FactionId != factionId)
+                {
+                    adminRevoked = s.IsAdmin;
+                    s.IsAdmin = false;
+                    InvalidateVotes(id);
+                }
+                s.EndPoint = new IPEndPoint(from.Address, from.Port);
                 s.SteamId = steamId;
                 s.Room = roomId;
-                s.IsHost = isHost;
+                s.IsHost = false; // A wire claim is not proof of host authority.
                 s.Name = name;
                 s.FactionId = factionId;
                 s.LastSeen = Now;
             }
             SendScratch(from, w => Packets.WriteHelloAck(w, ServerName));
+            if (adminRevoked)
+                SendAdmin(from, w => Packets.WriteAdminResult(w, false, true, "Session identity changed; log in again."));
         }
 
         private void OnState(ref PacketReader r, IPEndPoint from)
@@ -194,45 +288,68 @@ namespace NORS.Server.Core
             int factionId = r.Int();
             float x = r.Float(), y = r.Float(), z = r.Float();
             int count = r.Byte();
+            if (count > NorsProtocol.MaxRxFrequencies) throw new FormatException("Too many frequencies.");
+            var frequencies = new int[count];
+            for (int i = 0; i < count; i++) frequencies[i] = r.Int();
+            string name = RosterName(r.Str());
+            RequireEnd(ref r);
+            bool adminRevoked = false;
+
+            lock (_lock)
+            {
+                if (!Owns(id, from, out var existing)) return;
+            }
 
             if (Bans.IsBanned(steamId, from.Address.ToString(), roomId, out _))
             {
                 SendScratch(from, w => Packets.WriteKicked(w, "Banned"));
-                lock (_lock) _byId.Remove(id);
+                lock (_lock) RemoveSession(id);
                 return;
             }
 
             lock (_lock)
             {
-                if (!_byId.TryGetValue(id, out var s))
+                if (!Owns(id, from, out var s)) return;
+                if (s.SteamId != steamId || s.Room != roomId || s.FactionId != factionId)
                 {
-                    s = new ClientSession { Id = id };
-                    _byId[id] = s;
+                    adminRevoked = s.IsAdmin;
+                    s.IsAdmin = false;
+                    InvalidateVotes(id);
                 }
-                s.EndPoint = from;
                 s.SteamId = steamId;
                 s.Room = roomId;
-                s.IsHost = isHost;
+                s.IsHost = false;
                 s.FactionId = factionId;
                 s.X = x; s.Y = y; s.Z = z;
                 s.LastSeen = Now;
                 s.RxFrequencies.Clear();
-                for (int i = 0; i < count; i++) s.RxFrequencies.Add(r.Int());
-                string name = r.Str();
+                for (int i = 0; i < count; i++) s.RxFrequencies.Add(frequencies[i]);
                 if (!string.IsNullOrEmpty(name)) s.Name = name;
             }
+            if (adminRevoked)
+                SendAdmin(from, w => Packets.WriteAdminResult(w, false, true, "Session identity changed; log in again."));
         }
 
-        private void OnVoice(byte[] buffer, int len, ref PacketReader r)
+        private void OnVoice(byte[] buffer, int len, ref PacketReader r, IPEndPoint from)
         {
             uint senderId = r.UInt();
             r.UInt();                 // seq
             int txFreq = r.Int();     // route key
-            VoiceReceived++;
+            r.Byte(); r.Int(); r.Byte(); // modulation, faction, crypto
+            r.Float(); r.Float(); r.Float();
+            int audioLength = r.UShort();
+            if (audioLength > NorsProtocol.MaxAudioBytes) throw new FormatException("Oversized audio.");
+            r.Skip(audioLength);
+            // Retain the published protocol's optional callsign/jam/faction suffixes.
+            if (!r.End) r.Str();
+            if (!r.End) r.Byte();
+            if (!r.End) r.Int();
+            RequireEnd(ref r);
 
             lock (_lock)
             {
-                if (!_byId.TryGetValue(senderId, out var sender)) return;
+                if (!Owns(senderId, from, out var sender)) return;
+                VoiceReceived++;
                 ulong room = sender.Room;
                 if (room == 0) return;   // sender not in a session yet — don't leak across rooms
 
@@ -241,6 +358,7 @@ namespace NORS.Server.Core
                     if (s.Id == senderId) continue;
                     if (s.Room != room) continue;            // never cross rooms (separate "servers")
                     if (!s.RxFrequencies.Contains(txFreq)) continue;
+                    if (!_egressRate.Take(Now, 8 * 1024 * 1024, 16 * 1024 * 1024, len)) break;
                     try { _socket.SendTo(buffer, 0, len, SocketFlags.None, s.EndPoint); VoiceForwarded++; }
                     catch (SocketException) { }
                 }
@@ -250,27 +368,37 @@ namespace NORS.Server.Core
         private void OnPing(ref PacketReader r, IPEndPoint from)
         {
             uint id = r.UInt();
-            lock (_lock) { if (_byId.TryGetValue(id, out var s)) { s.EndPoint = from; s.LastSeen = Now; } }
-            SendScratch(from, w => { Packets.WriteHeader(w, PacketType.Pong); });
-        }
-
-        private void OnBye(ref PacketReader r)
-        {
-            uint id = r.UInt();
+            RequireEnd(ref r);
             lock (_lock)
             {
                 if (_byId.TryGetValue(id, out var s))
                 {
+                    if (!s.EndPoint.Equals(from)) return;
+                    s.LastSeen = Now;
+                }
+            }
+            SendScratch(from, w => { Packets.WriteHeader(w, PacketType.Pong); });
+        }
+
+        private void OnBye(ref PacketReader r, IPEndPoint from)
+        {
+            uint id = r.UInt();
+            RequireEnd(ref r);
+            lock (_lock)
+            {
+                if (Owns(id, from, out var s))
+                {
                     Emit($"- {s.Name} left. Clients: {_byId.Count - 1}");
-                    _byId.Remove(id);
+                    RemoveSession(id);
                 }
             }
         }
 
-        private void OnVoteKick(ref PacketReader r)
+        private void OnVoteKick(ref PacketReader r, IPEndPoint from)
         {
             uint voter = r.UInt();
             uint target = r.UInt();
+            RequireEnd(ref r);
             if (!VoteKickEnabled) return;
 
             string targetName = null, voterName = null;
@@ -281,7 +409,7 @@ namespace NORS.Server.Core
 
             lock (_lock)
             {
-                if (_byId.TryGetValue(voter, out var vs) && _byId.TryGetValue(target, out var ts)
+                if (Owns(voter, from, out var vs) && _byId.TryGetValue(target, out var ts)
                     && voter != target && vs.Room == ts.Room)   // only within the same server/room
                 {
                     voterEp = vs.EndPoint;
@@ -293,11 +421,13 @@ namespace NORS.Server.Core
                     {
                         valid = true;
                         voterName = vs.Name; targetName = ts.Name; factionId = ts.FactionId; room = ts.Room;
-                        if (!_votes.TryGetValue(target, out var st))
+                        if (!_votes.TryGetValue(target, out var st) || Now - st.Start > VoteWindowSeconds)
                         {
                             st = new VoteState { Start = Now, TargetName = ts.Name };
                             _votes[target] = st;
                         }
+                        st.Voters.RemoveWhere(v => !_byId.TryGetValue(v, out var member)
+                            || v == target || member.Room != ts.Room || member.FactionId != ts.FactionId);
                         st.Voters.Add(voter);
 
                         // Eligible = same room + same faction, excluding the target.
@@ -335,15 +465,16 @@ namespace NORS.Server.Core
         {
             uint id = r.UInt();
             string pw = r.Str();
+            RequireEnd(ref r);
             bool ok = false;
             string msg;
 
             if (!RemoteAdminEnabled) msg = "Remote admin is disabled on this server.";
             else if (pw == _adminPassword)
             {
-                ok = true; msg = "Admin authenticated.";
-                lock (_lock) { if (_byId.TryGetValue(id, out var s)) s.IsAdmin = true; }
-                Emit($"Admin authenticated: #{id:X8}");
+                lock (_lock) { if (Owns(id, from, out var s)) { s.IsAdmin = true; ok = true; } }
+                msg = ok ? "Admin authenticated." : "Session not found.";
+                if (ok) Emit($"Admin authenticated: #{id:X8}");
             }
             else msg = "Incorrect admin password.";
 
@@ -356,27 +487,22 @@ namespace NORS.Server.Core
             var op = (AdminOp)r.Byte();
             uint target = r.UInt();
             string arg = r.Str();
+            RequireEnd(ref r);
 
-            // Authority: master admin (relay operator, password) OR the host of the target's room.
-            bool master, roomHost;
-            ulong banRoom;
+            // Only an authenticated relay operator may moderate; room ownership is unverified.
+            bool master;
             lock (_lock)
             {
-                _byId.TryGetValue(id, out var sender);
-                ClientSession tgt = null;
-                if (target != 0) _byId.TryGetValue(target, out tgt);
-                master = sender != null && sender.IsAdmin;
-                roomHost = sender != null && sender.IsHost && sender.Room != 0 && tgt != null && tgt.Room == sender.Room;
-                banRoom = master ? 0UL : (sender?.Room ?? 0UL);
+                master = RemoteAdminEnabled && Owns(id, from, out var sender) && sender.IsAdmin;
             }
-            if (!master && !roomHost) { SendAdmin(from, w => Packets.WriteAdminResult(w, false, false, "Not authorized.")); return; }
+            if (!master) { SendAdmin(from, w => Packets.WriteAdminResult(w, false, true, "Not authorized. Log in again.")); return; }
 
             bool ok = true;
             string result;
             switch (op)
             {
                 case AdminOp.Kick: ok = Kick(target, string.IsNullOrEmpty(arg) ? "Kicked by host" : arg); result = ok ? "Kicked." : "Target not found."; break;
-                case AdminOp.Ban: ok = Ban(target, arg, banRoom); result = ok ? "Banned." : "Target not found."; break;
+                case AdminOp.Ban: ok = Ban(target, arg); result = ok ? "Banned." : "Target not found."; break;
                 case AdminOp.Unban:
                     if (!master) { ok = false; result = "Only the server operator can unban."; }
                     else { int n = Unban(arg); ok = n > 0; result = ok ? $"Removed {n} ban(s)." : "No matching ban."; }
@@ -443,18 +569,25 @@ namespace NORS.Server.Core
 
         private void Sweep()
         {
+            var staleRates = new List<IPEndPoint>();
+            foreach (var pair in _rates)
+                if (Now - pair.Value.Last > 30) staleRates.Add(pair.Key);
+            foreach (var endpoint in staleRates) _rates.Remove(endpoint);
             lock (_lock)
             {
                 List<uint> dead = null;
                 foreach (var kv in _byId)
                     if (Now - kv.Value.LastSeen > NorsProtocol.ClientTimeoutSeconds)
-                        (dead ??= new List<uint>()).Add(kv.Key);
+                    {
+                        if (dead == null) dead = new List<uint>();
+                        dead.Add(kv.Key);
+                    }
 
                 if (dead != null)
                     foreach (var id in dead)
                     {
                         Emit($"- {_byId[id].Name} timed out. Clients: {_byId.Count - 1}");
-                        _byId.Remove(id);
+                        RemoveSession(id);
                     }
 
                 // Expire stale votes and drop votes whose target left or whose voters left.
@@ -464,7 +597,10 @@ namespace NORS.Server.Core
                     foreach (var kv in _votes)
                     {
                         if (Now - kv.Value.Start > VoteWindowSeconds || !_byId.ContainsKey(kv.Key))
-                            (drop ??= new List<uint>()).Add(kv.Key);
+                        {
+                            if (drop == null) drop = new List<uint>();
+                            drop.Add(kv.Key);
+                        }
                         else
                             kv.Value.Voters.RemoveWhere(v => !_byId.ContainsKey(v));
                     }
@@ -529,7 +665,7 @@ namespace NORS.Server.Core
             foreach (var s in offenders)
             {
                 Bans.IsBanned(s.SteamId, s.Ip, s.Room, out string reason);
-                lock (_lock) _byId.Remove(s.Id);
+                lock (_lock) RemoveSession(s.Id);
                 SendAdmin(s.EndPoint, w => Packets.WriteKicked(w, "Banned" + (string.IsNullOrEmpty(reason) ? "" : ": " + reason)));
                 Emit($"Removed {s.Name} - banned on another server sharing this ban list.");
             }
@@ -543,7 +679,7 @@ namespace NORS.Server.Core
             {
                 if (!_byId.TryGetValue(id, out var s)) return false;
                 ep = s.EndPoint; name = s.Name;
-                _byId.Remove(id);
+                RemoveSession(id);
             }
             SendAdmin(ep, w => Packets.WriteKicked(w, string.IsNullOrEmpty(reason) ? "Kicked by host" : reason));
             Emit($"Kicked {name} (#{id}){(string.IsNullOrEmpty(reason) ? "" : ": " + reason)}.");
@@ -562,7 +698,7 @@ namespace NORS.Server.Core
             {
                 if (!_byId.TryGetValue(id, out var s)) return false;
                 ep = s.EndPoint; name = s.Name; steamId = s.SteamId; ip = s.Ip;
-                _byId.Remove(id);
+                RemoveSession(id);
             }
             Bans.Add(steamId, ip, name, reason, room);
             SendAdmin(ep, w => Packets.WriteKicked(w, "Banned" + (string.IsNullOrEmpty(reason) ? "" : ": " + reason)));

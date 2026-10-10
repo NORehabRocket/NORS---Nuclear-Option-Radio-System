@@ -132,7 +132,7 @@ harmless on a client.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `Moderators` | *(blank)* | Steam IDs, comma separated, who may mute/ban for everyone. |
+| `Moderators` | *(blank)* | P2P only: Steam IDs, comma separated, whose ban lists this client honours. Does not grant relay admin rights. |
 
 Example:
 
@@ -318,19 +318,22 @@ datacentres need the central service, which is separate work.
 Voice bans are **voice-only**. A banned player keeps flying and keeps using text chat; they just
 can't be heard. Nothing NORS does can kick anyone from the game itself.
 
-There are two ways to grant moderator rights, and you can use both:
+Moderation differs between the relay and Steam P2P transports:
 
-**Steam ID list (preferred).** Put your staff's Steam IDs in `Moderation/Moderators`. They get
-Ban/Unban buttons next to every name in their radio panel. This is the stronger option: a Steam
-ID can't be leaked or shared, and only whoever edits the config can change the list.
+**Steam P2P: moderator list.** Put your staff's Steam IDs in `Moderation/Moderators`. They get
+Ban/Unban buttons in P2P mode. Each client decides whose ban lists it honours, so players also need
+your staff's IDs in their own config. This list does not grant relay administrator rights.
 
-**Admin password.** Set `Server/AdminPassword`, and a trusted player types it into their radio
-panel to unlock the same controls. Convenient, but passwords get pasted into Discord and outlive
-the person you gave them to — prefer the ID list where you can.
+**Relay: admin password.** Set `Server/AdminPassword`, and a trusted player types it into their radio
+panel to unlock relay Kick/Ban controls. A blank password disables all remote relay administration.
+The relay does not trust a client-supplied game-host flag as authority. Authenticated sessions are
+bound to their UDP endpoint; identity, room or faction changes require authentication again.
 
-> Note on the ID list: it works by each client deciding whose bans it honours. That means players
-> should have your staff's IDs in *their* config too — normally you'd ship that in your modpack.
-> The server's own `AdminPassword` path works regardless of what players have configured.
+Remote relay passwords are not encrypted on the wire. Use a trusted/protected network, or the
+standalone relay's local console/GUI. Room/faction/Steam ID claims are not authenticated, and
+vote-kick is not Sybil-resistant. See the README's relay limits, including the **32-client total cap
+across all rooms**. Clients using an older radio panel may still show host moderation buttons, but
+the relay rejects those commands without password authentication.
 
 ### Ban storage
 

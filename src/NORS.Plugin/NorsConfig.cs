@@ -185,8 +185,8 @@ namespace NORS.Plugin
                 "Name shown to players when they connect. Blank uses a generic name.");
             ServerAdminPassword = cfg.Bind("Server", "AdminPassword", "",
                 "Password a trusted player can enter in their radio panel to unlock voice kick/ban on " +
-                "this server. Blank disables remote moderation. Prefer Moderation/Moderators (Steam ids) " +
-                "where you can: a password gets shared and outlives the person, an id list does not.");
+                "this relay. Blank disables remote relay moderation. Host claims and the P2P " +
+                "Moderation/Moderators list do not grant relay admin rights. Use only on a trusted network.");
             ServerVoteKick = cfg.Bind("Server", "VoteKick", true,
                 "Let players vote to kick someone off voice on this server.");
             ServerSharedBanFile = cfg.Bind("Server", "SharedBanFile", "",
@@ -196,7 +196,7 @@ namespace NORS.Plugin
                 "needed. Blank keeps this server's bans private to itself.");
 
             Moderators = cfg.Bind("Moderation", "Moderators", "",
-                "Steam ids (comma separated) whose voice mute/bans this client obeys, and who may issue " +
+                "P2P only: Steam ids (comma separated) whose voice mute/bans this client obeys, and who may issue " +
                 "them from the radio panel. The game host is always trusted in a player-hosted lobby, but " +
                 "a DEDICATED server has no host player at all — so without this, nobody can moderate voice " +
                 "there. Communities normally ship their staff's ids here in the modpack. You only obey " +

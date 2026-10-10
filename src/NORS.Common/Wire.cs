@@ -80,6 +80,8 @@ namespace NORS.Common
 
         public PacketReader(byte[] buffer, int offset, int length)
         {
+            if (buffer == null || offset < 0 || length < 0 || offset > buffer.Length - length)
+                throw new FormatException("Invalid packet slice.");
             _b = buffer;
             _pos = offset;
             _end = offset + length;
@@ -88,11 +90,17 @@ namespace NORS.Common
         public int Remaining => _end - _pos;
         public bool End => _pos >= _end;
 
-        public byte Byte() => _b[_pos++];
-        public bool Bool() => _b[_pos++] != 0;
+        private void Require(int count)
+        {
+            if (count < 0 || count > Remaining) throw new FormatException("Truncated packet.");
+        }
+
+        public byte Byte() { Require(1); return _b[_pos++]; }
+        public bool Bool() => Byte() != 0;
 
         public ushort UShort()
         {
+            Require(2);
             ushort v = (ushort)(_b[_pos] | (_b[_pos + 1] << 8));
             _pos += 2;
             return v;
@@ -100,6 +108,7 @@ namespace NORS.Common
 
         public uint UInt()
         {
+            Require(4);
             uint v = (uint)(_b[_pos] | (_b[_pos + 1] << 8) | (_b[_pos + 2] << 16) | (_b[_pos + 3] << 24));
             _pos += 4;
             return v;
@@ -118,7 +127,8 @@ namespace NORS.Common
 
         public string Str()
         {
-            int n = _b[_pos++];
+            int n = Byte();
+            Require(n);
             if (n == 0) return string.Empty;
             string s = Encoding.UTF8.GetString(_b, _pos, n);
             _pos += n;
@@ -128,10 +138,11 @@ namespace NORS.Common
         /// <summary>Copies <paramref name="count"/> bytes into <paramref name="dst"/> and advances.</summary>
         public void Bytes(byte[] dst, int offset, int count)
         {
+            Require(count);
             Array.Copy(_b, _pos, dst, offset, count);
             _pos += count;
         }
 
-        public void Skip(int count) => _pos += count;
+        public void Skip(int count) { Require(count); _pos += count; }
     }
 }

@@ -119,10 +119,10 @@ firewall/router. Everyone sets `ServerHost` to the host's IP.
 ### Multi-room ("one relay, many servers")
 The relay is a single **master** server everyone connects to, but it's partitioned into **rooms**: a
 room = one game host's session (keyed by the **host's SteamID**). Voice, the player roster, vote-kick
-and notices are **scoped to your room**, so people in different game lobbies never hear or moderate
-each other even though they share the relay. Whoever **hosts the game is automatically that room's
-moderator** — "their own server." (This needs no setup; clients send their room + host flag
-automatically.)
+and notices are **scoped to your room** during normal client operation. Room, faction and Steam ID
+values are client claims, not verified identities or access-control credentials. In particular,
+claiming to host a game does **not** grant relay moderation rights. Remote relay moderation requires
+the operator's admin password; P2P moderation is a separate, unchanged path.
 
 ### Moderation model
 There are three ways to remove a player:
@@ -131,21 +131,43 @@ There are three ways to remove a player:
    This is **global** (across all rooms). Kick disconnects; ban adds to `nors-bans.txt` and refuses
    future joins. There's also optional password remote-admin (`--admin-pass`) for a trusted player
    to do this from in-game.
-1b. **Game host (room moderator)** — whoever hosts a game session automatically gets **Kick/Ban
-   buttons for the players in their own room** (no password). A host's ban is **room-scoped** (that
-   player is blocked from *that* host's sessions, not globally).
 2. **Player vote-kick (faction-scoped)** — players can **Vote** next to a *teammate's* name in the
    radio panel (the button only shows for your own faction). When a strict majority of the *other
    same-faction* players have voted (min 2), the target is kicked. Cross-faction votes are refused.
-   Votes expire after 45 s, and only your faction sees the vote notices. Disable with `--no-votekick`
-   (console) or the GUI checkbox.
+   Votes expire after 45 s and are invalidated on session removal or identity/room/faction changes.
+   Only your faction sees the vote notices. Disable with `--no-votekick` (console) or the GUI checkbox.
 3. **Remote admin** — start the relay with an admin password (`--admin-pass <pw>` / GUI field).
    A trusted player puts the same password in `AdminPassword` in their config, hits **Login** in the
    panel, and then gets **Kick/Ban** buttons next to every name — so they can moderate from inside
-   the game without alt-tabbing to the server box.
+   the game without alt-tabbing to the server box. A blank password disables **all** remote admin
+   commands, including commands from clients claiming to be hosts. Authentication and commands must
+   come from the registered session's UDP endpoint. Identity/room/faction changes require login again.
 
-Bans key off the player's **Steam id** (NAT-proof, survives IP changes); if the Steam id isn't
-known, they fall back to IP. Unban by Steam id or IP.
+Bans key off the client's reported **Steam id**; if none is reported, they fall back to IP. Unban by
+Steam id or IP. The relay does not authenticate Steam IDs, so these bans are not identity guarantees.
+The trusted local `RelayServer.Ban` API also supports room-scoped bans; remote operators ban globally.
+
+### Relay bounds and security limits
+
+The relay admits **32 simultaneous clients total across all rooms**, one per UDP endpoint. Names are
+limited to 32 UTF-8 bytes so a full roster fits one datagram. These are fixed limits, not configuration
+options; operators sharing a relay between several game servers must account for the total cap.
+
+Packet reads respect the actual datagram length, and malformed packets are dropped before session
+mutation. Existing sessions cannot be overwritten from a different endpoint. A client whose NAT
+endpoint changes must wait for its old session to expire (10 seconds), or leave from the old endpoint
+before reconnecting. The published protocol version and optional voice suffixes remain supported.
+Updated clients refresh Hello periodically to recover from relay restarts/session expiry. Older
+clients must reconnect manually in those cases because State packets no longer create sessions.
+
+Ingress is limited to 100 packets/second per endpoint (burst 200), 4,000/second globally (burst 8,000),
+and 256 tracked endpoints (expired after 30 idle seconds). Voice egress is capped at 8 MiB/second
+(burst 16 MiB). These limits bound application work; they are not DDoS protection.
+
+Endpoint binding is not cryptographic authentication. Room/faction/Steam ID claims remain unverified,
+vote-kick is not Sybil-resistant, and remote admin passwords travel without encryption. Use remote
+admin only on a trusted/protected network, or use the local operator console/GUI. NORS moderation is
+voice-only; it does not remove players from the game.
 
 ---
 
